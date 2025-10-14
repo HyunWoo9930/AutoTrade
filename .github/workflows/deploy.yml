@@ -10,7 +10,7 @@ on:
 env:
   DOCKER_IMAGE: stock-trading-bot
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: hyunwoo12/stock_trading
 
 jobs:
   build-and-push:
