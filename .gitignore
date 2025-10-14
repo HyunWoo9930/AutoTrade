@@ -42,3 +42,4 @@ k8s/secret.yaml.bak
 k8s/secret.yaml
 k8s/secret-production.yaml
 k8s/*-secret.yaml
+**/secret-production.yaml
