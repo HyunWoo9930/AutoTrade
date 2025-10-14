@@ -126,6 +126,30 @@ class DiscordNotifier:
 """
         self._send('trade', msg, color, title)
 
+    def notify_buy_failed(self, name, code, reason):
+        """매수 실패"""
+        msg = f"""
+❌ **매수 실패**
+
+📊 **{name}** (`{code}`)
+⚠️ 실패 원인: {reason}
+
+⏰ {datetime.now().strftime('%H:%M:%S')}
+"""
+        self._send('trade', msg, 0xe74c3c, "❌ 매수 실패")
+
+    def notify_sell_failed(self, name, code, reason):
+        """매도 실패"""
+        msg = f"""
+❌ **매도 실패**
+
+📊 **{name}** (`{code}`)
+⚠️ 실패 원인: {reason}
+
+⏰ {datetime.now().strftime('%H:%M:%S')}
+"""
+        self._send('trade', msg, 0xe74c3c, "❌ 매도 실패")
+
     # ========== 신호 분석 (signal 채널) ==========
 
     def notify_signal_strong(self, name, code, signals, details, price):

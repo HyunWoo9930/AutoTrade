@@ -320,6 +320,9 @@ class AdvancedTradingStrategy:
                     f"수량: {first_buy}주 (40% 분할)\n"
                     f"손절가: {current_price - int(atr * 2):,}원"
                 )
+            else:
+                # 매수 실패 알림
+                self.notifier.notify_buy_failed(stock_name, stock_code, "주문 실패 (장 마감 또는 예수금 부족)")
 
     def _manage_position(self, stock_code, stock_name, quantity, profit_rate):
         """포지션 관리 (익절/손절)"""
@@ -349,6 +352,9 @@ class AdvancedTradingStrategy:
                     del self.current_buy_id[stock_code]
 
                 self.notifier.notify_sell(stock_name, stock_code, quantity, current_price, profit_rate)
+            else:
+                # 매도 실패 알림
+                self.notifier.notify_sell_failed(stock_name, stock_code, "손절 주문 실패")
 
         # 1차 익절: +10% (50% 매도)
         elif profit_rate >= 10.0 and quantity > 1:
@@ -372,6 +378,9 @@ class AdvancedTradingStrategy:
                     )
 
                 self.notifier.notify_sell(stock_name, stock_code, sell_qty, current_price, profit_rate)
+            else:
+                # 매도 실패 알림
+                self.notifier.notify_sell_failed(stock_name, stock_code, "1차 익절 주문 실패")
 
         # 2차 익절: +20% (전량 매도)
         elif profit_rate >= 20.0:
@@ -395,6 +404,9 @@ class AdvancedTradingStrategy:
                     del self.current_buy_id[stock_code]
 
                 self.notifier.notify_sell(stock_name, stock_code, quantity, current_price, profit_rate)
+            else:
+                # 매도 실패 알림
+                self.notifier.notify_sell_failed(stock_name, stock_code, "2차 익절 주문 실패")
 
         else:
             print(f"\n⏳ 홀딩 중 (수익률: {profit_rate}%)")
