@@ -86,7 +86,7 @@ sudo kubectl get secret stock-trading-secret
 # 권한: read:packages, write:packages
 
 # 로그인 (YOUR_TOKEN을 실제 토큰으로 변경)
-echo "YOUR_GITHUB_TOKEN" | sudo docker login ghcr.io -u HyunWoo9930 --password-stdin
+echo "YOUR_GITHUB_TOKEN" | sudo docker login ghcr.io -u hyunwoo12 --password-stdin
 ```
 
 ---
@@ -154,9 +154,9 @@ sudo kubectl logs <pod-name>
 ### 이미지 Pull 실패
 ```bash
 # EC2에서
-echo "YOUR_TOKEN" | sudo docker login ghcr.io -u HyunWoo9930 --password-stdin
-sudo docker pull ghcr.io/HyunWoo9930/stock_trading:latest
-sudo docker save ghcr.io/HyunWoo9930/stock_trading:latest | sudo k3s ctr images import -
+echo "YOUR_TOKEN" | sudo docker login ghcr.io -u hyunwoo12 --password-stdin
+sudo docker pull ghcr.io/hyunwoo12/stock_trading:latest
+sudo docker save ghcr.io/hyunwoo12/stock_trading:latest | sudo k3s ctr images import -
 ```
 
 ### CronJob 실행 안됨
