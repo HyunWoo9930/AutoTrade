@@ -124,10 +124,18 @@ class KISApi:
         
         self._rate_limit()  # 속도 제한
         res = requests.post(url, headers=headers, data=json.dumps(body))
-        
+
         if res.status_code == 200:
-            print(f"✅ 매수 주문 성공: {stock_code} {quantity}주")
-            return res.json()
+            result = res.json()
+            rt_cd = result.get('rt_cd', '')
+            msg1 = result.get('msg1', '')
+
+            if rt_cd == '0':
+                print(f"✅ 매수 주문 성공: {stock_code} {quantity}주")
+                return result
+            else:
+                print(f"❌ 매수 주문 실패: {msg1}")
+                return None
         else:
             print(f"❌ 매수 주문 실패:", res.text)
             return None
@@ -155,10 +163,18 @@ class KISApi:
         
         self._rate_limit()  # 속도 제한
         res = requests.post(url, headers=headers, data=json.dumps(body))
-        
+
         if res.status_code == 200:
-            print(f"✅ 매도 주문 성공: {stock_code} {quantity}주")
-            return res.json()
+            result = res.json()
+            rt_cd = result.get('rt_cd', '')
+            msg1 = result.get('msg1', '')
+
+            if rt_cd == '0':
+                print(f"✅ 매도 주문 성공: {stock_code} {quantity}주")
+                return result
+            else:
+                print(f"❌ 매도 주문 실패: {msg1}")
+                return None
         else:
             print(f"❌ 매도 주문 실패:", res.text)
             return None
