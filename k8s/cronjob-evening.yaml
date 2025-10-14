@@ -16,7 +16,7 @@ spec:
           restartPolicy: Never
           containers:
           - name: evening-routine
-            image: ghcr.io/hyunwoo12/stock_trading:latest
+            image: hyunwoo12/stock_trading:latest
             imagePullPolicy: Always
             command: ["python", "run_evening.py"]
             envFrom:

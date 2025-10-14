@@ -16,7 +16,7 @@ spec:
           restartPolicy: Never
           containers:
           - name: strategy-runner
-            image: ghcr.io/hyunwoo12/stock_trading:latest
+            image: hyunwoo12/stock_trading:latest
             imagePullPolicy: Always
             command: ["python", "run_strategy.py"]
             envFrom:
