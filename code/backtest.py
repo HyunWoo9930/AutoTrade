@@ -66,9 +66,10 @@ class Backtester:
         Returns:
             매수 성공 여부
         """
-        # 포지션 사이징
+        # 포지션 사이징 (현재가로 포트폴리오 평가)
+        current_prices = {stock_code: price}
         shares, _, _, stop_loss_pct = self.strategy.calculate_position_size(
-            stock_code, self.cash + self._get_portfolio_value(price), regime
+            stock_code, self.cash + self._get_portfolio_value(current_prices), regime
         )
 
         if shares == 0:
