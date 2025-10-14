@@ -81,27 +81,18 @@ def evening_routine():
 
 # 스케줄 설정
 def setup_schedule():
-    """스케줄 설정"""
-    # 평일 08:50 - 아침 루틴
+    """스케줄 설정 - 30분마다 실행"""
+    # 장중 30분마다 전략 실행 (09:00~15:30)
+    schedule.every(30).minutes.do(lambda: execute_strategies() if is_market_open() else None)
+
+    # 평일 08:50 - 아침 루틴 (시작 전 준비)
     schedule.every().monday.at("08:50").do(morning_routine)
     schedule.every().tuesday.at("08:50").do(morning_routine)
     schedule.every().wednesday.at("08:50").do(morning_routine)
     schedule.every().thursday.at("08:50").do(morning_routine)
     schedule.every().friday.at("08:50").do(morning_routine)
 
-    # 평일 10:00, 14:00 - 전략 실행
-    schedule.every().monday.at("10:00").do(execute_strategies)
-    schedule.every().monday.at("14:00").do(execute_strategies)
-    schedule.every().tuesday.at("10:00").do(execute_strategies)
-    schedule.every().tuesday.at("14:00").do(execute_strategies)
-    schedule.every().wednesday.at("10:00").do(execute_strategies)
-    schedule.every().wednesday.at("14:00").do(execute_strategies)
-    schedule.every().thursday.at("10:00").do(execute_strategies)
-    schedule.every().thursday.at("14:00").do(execute_strategies)
-    schedule.every().friday.at("10:00").do(execute_strategies)
-    schedule.every().friday.at("14:00").do(execute_strategies)
-
-    # 평일 15:40 - 저녁 루틴
+    # 평일 15:40 - 저녁 루틴 (마감 후 정리)
     schedule.every().monday.at("15:40").do(evening_routine)
     schedule.every().tuesday.at("15:40").do(evening_routine)
     schedule.every().wednesday.at("15:40").do(evening_routine)
@@ -109,9 +100,10 @@ def setup_schedule():
     schedule.every().friday.at("15:40").do(evening_routine)
 
     print("📅 스케줄러 시작!")
-    print("  - 08:50: 아침 루틴")
-    print("  - 10:00, 14:00: 전략 실행")
-    print("  - 15:40: 저녁 루틴")
+    print("  - 08:50: 아침 루틴 (시작 전)")
+    print("  - 30분마다: 전략 실행 (장중 09:00~15:30)")
+    print("  - 15:40: 저녁 루틴 (마감 후)")
+    print("\n⏰ 30분 간격으로 지속적인 매매 신호 확인!")
 
 
 if __name__ == "__main__":
