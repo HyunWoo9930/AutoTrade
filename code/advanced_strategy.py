@@ -250,10 +250,8 @@ class AdvancedTradingStrategy:
             if holding_qty > 0:
                 self._manage_position(stock_code, stock_name, holding_qty, profit_rate)
             else:
-                if signals >= 4:
+                if signals >= 3:
                     self._execute_buy(stock_code, stock_name, cash, signals)
-                elif signals >= 3:
-                    print(f"\n⚠️ 보통 신호 (3/5) - 신중한 매수 고려")
                 else:
                     print(f"\n❌ 매수 신호 부족 ({signals}/5) - 대기")
 
