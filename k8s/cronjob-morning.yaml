@@ -18,7 +18,7 @@ spec:
           - name: morning-routine
             image: hyunwoo12/stock_trading:latest
             imagePullPolicy: Always
-            command: ["python", "run_morning.py"]
+            command: ["python", "/app/run_morning.py"]
             envFrom:
             - secretRef:
                 name: stock-trading-secret

@@ -18,7 +18,7 @@ spec:
           - name: strategy-runner
             image: hyunwoo12/stock_trading:latest
             imagePullPolicy: Always
-            command: ["python", "run_strategy.py"]
+            command: ["python", "/app/run_strategy.py"]
             envFrom:
             - secretRef:
                 name: stock-trading-secret
