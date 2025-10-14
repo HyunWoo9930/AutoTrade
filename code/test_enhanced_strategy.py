@@ -9,13 +9,11 @@
 from advanced_strategy import AdvancedTradingStrategy
 from watchlist import get_all_stocks
 
-def test_market_regime():
+def test_market_regime(strategy):
     """시장 상태 감지 테스트"""
     print("\n" + "=" * 80)
     print("📊 시장 상태 감지 테스트")
     print("=" * 80)
-
-    strategy = AdvancedTradingStrategy()
 
     # 테스트 종목들
     test_stocks = [
@@ -41,13 +39,11 @@ def test_market_regime():
             print(f"  • 5일 변화율: {regime_info.get('price_change_5d', 0):.2f}%")
             print(f"  • 변동성: {regime_info.get('volatility', 0):.2f}%")
 
-def test_buy_signals():
+def test_buy_signals(strategy):
     """매수 신호 체크 및 임계치 테스트"""
     print("\n" + "=" * 80)
     print("🎯 매수 신호 및 시장별 임계치 테스트")
     print("=" * 80)
-
-    strategy = AdvancedTradingStrategy()
 
     test_stocks = [
         ("005930", "삼성전자"),
@@ -132,9 +128,17 @@ def main():
     print("  4. 피라미드 매수 (40% + 60% 분할)")
     print("  5. 강화된 손절 (급락장: -5% → -3%)")
 
-    # 테스트 실행
-    test_market_regime()
-    test_buy_signals()
+    # ⚠️ 토큰을 한 번만 발급받아 재사용
+    print("\n⏳ KIS API 토큰 발급 중... (1분당 1회 제한)")
+    strategy = AdvancedTradingStrategy()
+
+    if not strategy.api.access_token:
+        print("❌ 토큰 발급 실패. 1분 후 다시 시도하세요.")
+        return
+
+    # 테스트 실행 (같은 strategy 객체 재사용)
+    test_market_regime(strategy)
+    test_buy_signals(strategy)
     test_pyramid_logic()
     test_crash_protection()
 
