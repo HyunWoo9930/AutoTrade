@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stock-trading-config
+  namespace: default
+data:
+  watchlist.py: |
+    # watchlist.py
+    WATCHLIST = {
+        "대형주": [
+            ("005930", "삼성전자"),
+            ("000660", "SK하이닉스"),
+            ("035420", "NAVER"),
+            ("005380", "현대차"),
+            ("051910", "LG화학"),
+        ],
+        "2차전지": [
+            ("373220", "LG에너지솔루션"),
+            ("006400", "삼성SDI"),
+            ("247540", "에코프로비엠"),
+            ("086520", "에코프로"),
+        ],
+        "바이오": [
+            ("068270", "셀트리온"),
+            ("207940", "삼성바이오로직스"),
+            ("326030", "SK바이오팜"),
+        ],
+    }
+    
+    def get_all_stocks():
+        all_stocks = []
+        for sector, stocks in WATCHLIST.items():
+            all_stocks.extend(stocks)
+        return all_stocks
+    
+    def get_stocks_by_sector(sector):
+        return WATCHLIST.get(sector, [])

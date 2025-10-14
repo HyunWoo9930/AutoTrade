@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stock-trading-morning
+  namespace: default
+spec:
+  schedule: "50 8 * * 1-5"  # 평일 08:50 (한국시간)
+  timeZone: "Asia/Seoul"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: morning-routine
+            image: ghcr.io/HyunWoo9930/stock_trading:latest
+            imagePullPolicy: Always
+            command: ["python", "run_morning.py"]
+            envFrom:
+            - secretRef:
+                name: stock-trading-secret
+            volumeMounts:
+            - name: watchlist
+              mountPath: /app/watchlist.py
+              subPath: watchlist.py
+          volumes:
+          - name: watchlist
+            configMap:
+              name: stock-trading-config

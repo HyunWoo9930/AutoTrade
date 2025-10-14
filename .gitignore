@@ -1,0 +1,44 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg-info/
+dist/
+build/
+
+# Logs
+*.log
+logs/
+
+# Data files
+*.json
+*.xlsx
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+
+# Kubernetes secrets (DO NOT COMMIT!)
+k8s/secret.yaml.bak
+k8s/secret.yaml
+k8s/secret-production.yaml
+k8s/*-secret.yaml

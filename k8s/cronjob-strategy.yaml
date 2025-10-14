@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stock-trading-strategy
+  namespace: default
+spec:
+  schedule: "0 10,14 * * 1-5"  # 평일 10:00, 14:00 (한국시간)
+  timeZone: "Asia/Seoul"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: strategy-runner
+            image: ghcr.io/HyunWoo9930/stock_trading:latest
+            imagePullPolicy: Always
+            command: ["python", "run_strategy.py"]
+            envFrom:
+            - secretRef:
+                name: stock-trading-secret
+            volumeMounts:
+            - name: watchlist
+              mountPath: /app/watchlist.py
+              subPath: watchlist.py
+            - name: journal
+              mountPath: /app/trading_journal.json
+          volumes:
+          - name: watchlist
+            configMap:
+              name: stock-trading-config
+          - name: journal
+            persistentVolumeClaim:
+              claimName: trading-journal-pvc
