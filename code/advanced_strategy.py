@@ -186,8 +186,17 @@ class AdvancedTradingStrategy:
         latest = df.iloc[-1]
         prev_5 = df.iloc[-5:] if len(df) >= 5 else df
 
-        # 최근 5일 가격 변화율
+        # 최근 5일 가격 변화율 (일봉 종가 기준)
         price_change_5d = (latest['close'] - prev_5['close'].iloc[0]) / prev_5['close'].iloc[0] * 100
+
+        # 🆕 장중 현재가 기반 변화율 추가 (실시간 급락 감지)
+        try:
+            current_price = int(self.api.get_current_price(stock_code))
+            # 전날 종가 대비 오늘 현재가 변화율
+            intraday_change = (current_price - latest['close']) / latest['close'] * 100
+        except:
+            current_price = latest['close']
+            intraday_change = 0
 
         # 변동성 계산 (최근 20일 표준편차)
         volatility = df['close'].tail(20).std() / df['close'].tail(20).mean() * 100
@@ -196,13 +205,24 @@ class AdvancedTradingStrategy:
             'adx': latest['ADX'],
             'atr': latest['ATR'],
             'price_change_5d': price_change_5d,
+            'intraday_change': intraday_change,  # 🆕 장중 변화율
+            'current_price': current_price,  # 🆕 현재가
             'volatility': volatility,
             'ma5': latest['MA5'],
             'ma20': latest['MA20']
         }
 
-        # 🚨 급락장 감지: 5일간 -10% 이상 하락 또는 변동성 급증
-        if price_change_5d < -10 or volatility > 8:
+        # 🚨 급락장 감지: 5일간 -10% 이상 하락 또는 (하락 + 고변동성)
+        # 수정: 급등(+수익률)은 제외, 하락만 급락으로 판단
+        if price_change_5d < -10:
+            return "crash", regime_info
+
+        # 하락 + 고변동성 동시 충족 시에만 급락장
+        if price_change_5d < 0 and volatility > 10:
+            return "crash", regime_info
+
+        # 🆕 장중 급락 감지: 전날 종가 대비 -5% 이상 급락
+        if intraday_change < -5:
             return "crash", regime_info
 
         # 📊 횡보장 감지: ADX < 25 (약한 추세) + MA5와 MA20 근접
@@ -217,27 +237,34 @@ class AdvancedTradingStrategy:
 
         return "unknown", regime_info
 
-    def calculate_position_size(self, stock_code, account_balance):
-        """포지션 사이징 (ATR 기반)"""
+    def calculate_position_size(self, stock_code, account_balance, regime="unknown"):
+        """포지션 사이징 (손절 퍼센트 기준)"""
         df = self.get_ohlcv(stock_code, count=30)
         if df is None or len(df) < 14:
             return 0, 0, 0
 
-        # ATR 계산
+        # ATR 계산 (참고용)
         atr = ta.volatility.average_true_range(
             df['high'], df['low'], df['close'], window=14
         ).iloc[-1]
 
         current_price = int(self.api.get_current_price(stock_code))
 
-        # 2% 리스크
+        # 손절 퍼센트 결정 (급락장: -3%, 평상시: -5%)
+        stop_loss_pct = 0.03 if regime == "crash" else 0.05
+
+        # 2% 리스크 기준으로 수량 계산
         risk_amount = account_balance * 0.02
-        stop_distance = atr * 2
+        stop_loss_amount = current_price * stop_loss_pct
+        shares = int(risk_amount / stop_loss_amount)
 
-        shares = int(risk_amount / stop_distance)
+        # 횡보장일 때는 포지션 크기 50% 축소
+        if regime == "sideways":
+            shares = int(shares * 0.5)
 
-        # 한 종목 최대 10% 제한
-        max_position = account_balance * 0.10
+        # 한 종목 최대 10% 제한 (횡보장: 5%)
+        max_position_pct = 0.05 if regime == "sideways" else 0.10
+        max_position = account_balance * max_position_pct
         max_shares = int(max_position / current_price)
 
         shares = min(shares, max_shares)
@@ -257,6 +284,7 @@ class AdvancedTradingStrategy:
             if regime_info:
                 print(f"  ADX: {regime_info.get('adx', 0):.1f}")
                 print(f"  5일 변화율: {regime_info.get('price_change_5d', 0):.2f}%")
+                print(f"  장중 변화율: {regime_info.get('intraday_change', 0):.2f}%")  # 🆕
                 print(f"  변동성: {regime_info.get('volatility', 0):.2f}%\n")
 
                 # 급락장이나 횡보장 감지 시 디스코드 알림
@@ -319,13 +347,14 @@ class AdvancedTradingStrategy:
                     print(f"\n🚨 급락장 감지! 매수 금지 (변동성 {regime_info.get('volatility', 0):.2f}%)")
                     return
 
-                # 📊 횡보장: 신호 임계치 상향 (4개 이상만 매수)
+                # 📊 횡보장: 신호 3개 이상 매수 (단, 포지션 크기 50% 축소)
                 elif regime == "sideways":
-                    if signals >= 4:
-                        print(f"\n📊 횡보장 - 강한 신호 확인! (4+)")
+                    if signals >= 3:
+                        print(f"\n📊 횡보장 - 신호 확인! ({signals}/5)")
+                        print(f"  ⚠️ 횡보장이므로 포지션 크기 50% 축소")
                         self._execute_buy(stock_code, stock_name, cash, signals, regime)
                     else:
-                        print(f"\n❌ 횡보장 - 신호 부족 ({signals}/5, 필요: 4+) - 대기")
+                        print(f"\n❌ 횡보장 - 신호 부족 ({signals}/5, 필요: 3+) - 대기")
 
                 # 📈 추세장: 기존 전략 (3개 이상 매수)
                 elif regime == "trending":
@@ -362,7 +391,7 @@ class AdvancedTradingStrategy:
         print(f"\n🎯 강한 매수 신호! ({signals}/5)")
 
         total_balance = cash + 30000000
-        shares, current_price, atr = self.calculate_position_size(stock_code, total_balance)
+        shares, current_price, atr = self.calculate_position_size(stock_code, total_balance, regime)
 
         if shares == 0:
             print("❌ 매수 가능 수량 없음")
@@ -370,12 +399,16 @@ class AdvancedTradingStrategy:
 
         position_value = shares * current_price
 
+        # 손절 퍼센트 결정
+        stop_loss_pct = 0.03 if regime == "crash" else 0.05
+        stop_loss_price = int(current_price * (1 - stop_loss_pct))
+
         print(f"\n📋 매수 계획:")
         print(f"  목표 수량: {shares}주")
         print(f"  현재가: {current_price:,}원")
         print(f"  투자금액: {position_value:,}원")
-        print(f"  ATR: {atr:,.0f}원")
-        print(f"  손절가: {current_price - int(atr * 2):,}원 (-{atr * 2 / current_price * 100:.1f}%)")
+        print(f"  ATR: {atr:,.0f}원 (참고)")
+        print(f"  손절가: {stop_loss_price:,}원 (-{stop_loss_pct*100:.0f}%)")
 
         first_buy = int(shares * 0.4)
 
@@ -392,13 +425,14 @@ class AdvancedTradingStrategy:
                     'first_buy_price': current_price,
                     'target_qty': shares,
                     'remaining_qty': shares - first_buy,
-                    'stop_loss': current_price - int(atr * 2),
+                    'stop_loss': stop_loss_price,
+                    'stop_loss_pct': stop_loss_pct,
                     'atr': atr,
                     'regime': regime
                 }
 
                 # 📝 일지 기록
-                strategy_note = f"신호 {signals}/5 | 시장: {regime} | 손절가: {current_price - int(atr * 2):,}원 | 분할: 1/2"
+                strategy_note = f"신호 {signals}/5 | 시장: {regime} | 손절가: {stop_loss_price:,}원 (-{stop_loss_pct*100:.0f}%) | 분할: 1/2"
                 buy_id = self.journal.log_buy(
                     stock_code=stock_code,
                     stock_name=stock_name,
@@ -418,7 +452,7 @@ class AdvancedTradingStrategy:
                     f"시장 상태: {regime_emoji} {regime}\n"
                     f"수량: {first_buy}주 (40% 분할)\n"
                     f"목표: {shares}주 (2차 추가매수 대기)\n"
-                    f"손절가: {current_price - int(atr * 2):,}원"
+                    f"손절가: {stop_loss_price:,}원 (-{stop_loss_pct*100:.0f}%)"
                 )
             else:
                 # 매수 실패 알림
@@ -467,8 +501,8 @@ class AdvancedTradingStrategy:
             first_price = tracker['first_buy_price']
             remaining_qty = tracker['remaining_qty']
 
-            # 조건: +3~5% 수익 구간에서 추가 매수 (추세 확인)
-            if 3.0 <= profit_rate <= 5.0 and remaining_qty > 0:
+            # 조건: +3% 이상 수익이면 언제든 추가 매수 가능 (범위 제한 제거)
+            if profit_rate >= 3.0 and remaining_qty > 0:
                 print(f"\n📈 피라미드 매수 조건 충족! (수익률 {profit_rate:.2f}%)")
 
                 # 추가 신호 확인 (간단 체크)
