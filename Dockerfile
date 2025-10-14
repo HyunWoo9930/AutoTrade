@@ -14,7 +14,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # 프로젝트 파일 복사
 COPY code/ /app/
-COPY .env /app/.env
 
 # 타임존 설정 (한국 시간)
 ENV TZ=Asia/Seoul
