@@ -83,20 +83,23 @@ jobs:
           EC2_USER: ${{ secrets.EC2_USER }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          REGISTRY: ${{ env.REGISTRY }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
         run: |
-          ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} << 'EOF'
+          ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} \
+            "DOCKERHUB_USERNAME='${DOCKERHUB_USERNAME}' \
+             DOCKERHUB_TOKEN='${DOCKERHUB_TOKEN}' \
+             IMAGE_NAME='${IMAGE_NAME}' \
+             bash -s" << 'EOF'
             set -e
 
             # Docker Hub 로그인
-            echo "$DOCKERHUB_TOKEN" | sudo docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            echo "${DOCKERHUB_TOKEN}" | sudo docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
 
             # 최신 이미지 Pull
-            sudo docker pull $IMAGE_NAME:latest
+            sudo docker pull ${IMAGE_NAME}:latest
 
             # K3s에 이미지 import (k3s는 containerd 사용)
-            sudo docker save $IMAGE_NAME:latest | sudo k3s ctr images import -
+            sudo docker save ${IMAGE_NAME}:latest | sudo k3s ctr images import -
 
             # K8s 배포 디렉토리로 이동
             cd ~/stock_trading/k8s || exit 1
