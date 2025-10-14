@@ -4,7 +4,7 @@ metadata:
   name: stock-trading-strategy
   namespace: default
 spec:
-  schedule: "0 9-15 * * 1-5"  # 평일 09:00~15:00 매시간 (한국시간)
+  schedule: "*/30 9-15 * * 1-5"  # 평일 09:00~15:30 매 30분 (한국시간)
   timeZone: "Asia/Seoul"
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
