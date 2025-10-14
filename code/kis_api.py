@@ -178,3 +178,311 @@ class KISApi:
         else:
             print(f"❌ 매도 주문 실패:", res.text)
             return None
+
+    # ==================== 해외주식 API ====================
+
+    def get_overseas_current_price(self, ticker, exchange="NAS"):
+        """해외주식 현재가 조회
+
+        Args:
+            ticker: 종목 심볼 (예: AAPL, TSLA)
+            exchange: 거래소 코드 (NAS=나스닥, NYSE=뉴욕, AMS=아멕스)
+        """
+        url = f"{self.config.BASE_URL}/uapi/overseas-price/v1/quotations/price"
+
+        headers = {
+            "content-type": "application/json",
+            "authorization": f"Bearer {self.access_token}",
+            "appkey": self.config.APP_KEY,
+            "appsecret": self.config.APP_SECRET,
+            "tr_id": "HHDFS00000300"
+        }
+
+        params = {
+            "AUTH": "",
+            "EXCD": exchange,
+            "SYMB": ticker
+        }
+
+        self._rate_limit()
+        res = requests.get(url, headers=headers, params=params)
+
+        if res.status_code == 200:
+            output = res.json().get("output")
+            if output:
+                return output.get("last")  # 현재가
+        else:
+            print(f"❌ 해외주식 조회 실패: {res.text}")
+        return None
+
+    def get_overseas_balance(self, exchange="NASD", currency="USD"):
+        """해외주식 잔고 조회
+
+        Args:
+            exchange: 거래소 코드 (NASD, NYSE, AMEX 등)
+            currency: 통화 코드 (USD, HKD, JPY 등)
+        """
+        url = f"{self.config.BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
+
+        headers = {
+            "content-type": "application/json",
+            "authorization": f"Bearer {self.access_token}",
+            "appkey": self.config.APP_KEY,
+            "appsecret": self.config.APP_SECRET,
+            "tr_id": "VTTS3012R"  # 모의투자용
+        }
+
+        params = {
+            "CANO": self.config.ACCOUNT_NO,
+            "ACNT_PRDT_CD": "01",
+            "OVRS_EXCG_CD": exchange,
+            "TR_CRCY_CD": currency,
+            "CTX_AREA_FK200": "",
+            "CTX_AREA_NK200": ""
+        }
+
+        self._rate_limit()
+        res = requests.get(url, headers=headers, params=params)
+
+        if res.status_code == 200:
+            return res.json()
+        else:
+            print("❌ 해외주식 잔고 조회 실패:", res.text)
+            return None
+
+    def buy_overseas_stock(self, ticker, quantity, exchange="NASD", price=0):
+        """해외주식 매수
+
+        Args:
+            ticker: 종목 심볼 (예: AAPL)
+            quantity: 수량
+            exchange: 거래소 코드 (NASD=나스닥, NYSE=뉴욕, AMEX=아멕스)
+            price: 가격 (0이면 현재가로 지정가 주문)
+        """
+        # 모의투자는 지정가만 가능 - price가 0이면 현재가 조회
+        if price == 0:
+            exchange_code = "NAS" if exchange == "NASD" else exchange.replace("AMEX", "AMS")
+            current_price_str = self.get_overseas_current_price(ticker, exchange_code)
+            if current_price_str:
+                price = float(current_price_str)
+                print(f"  📌 지정가 주문 (현재가): ${price:.2f}")
+            else:
+                print(f"  ❌ 현재가 조회 실패")
+                return None
+
+        url = f"{self.config.BASE_URL}/uapi/overseas-stock/v1/trading/order"
+
+        headers = {
+            "content-type": "application/json",
+            "authorization": f"Bearer {self.access_token}",
+            "appkey": self.config.APP_KEY,
+            "appsecret": self.config.APP_SECRET,
+            "tr_id": "VTTT1002U"  # 모의투자 매수
+        }
+
+        body = {
+            "CANO": self.config.ACCOUNT_NO,
+            "ACNT_PRDT_CD": "01",
+            "OVRS_EXCG_CD": exchange,
+            "PDNO": ticker,
+            "ORD_QTY": str(quantity),
+            "OVRS_ORD_UNPR": str(price),  # 지정가 필수
+            "ORD_SVR_DVSN_CD": "0",
+            "ORD_DVSN": "00"  # 00=지정가 (모의투자 필수)
+        }
+
+        self._rate_limit()
+        res = requests.post(url, headers=headers, data=json.dumps(body))
+
+        if res.status_code == 200:
+            result = res.json()
+            rt_cd = result.get('rt_cd', '')
+            msg1 = result.get('msg1', '')
+
+            if rt_cd == '0':
+                print(f"✅ 해외주식 매수 주문 성공: {ticker} {quantity}주")
+                return result
+            else:
+                print(f"❌ 해외주식 매수 주문 실패: {msg1}")
+                return None
+        else:
+            print(f"❌ 해외주식 매수 주문 실패: {res.text}")
+            return None
+
+    def sell_overseas_stock(self, ticker, quantity, exchange="NASD", price=0):
+        """해외주식 매도
+
+        Args:
+            ticker: 종목 심볼 (예: AAPL)
+            quantity: 수량
+            exchange: 거래소 코드 (NASD=나스닥, NYSE=뉴욕, AMEX=아멕스)
+            price: 가격 (0이면 현재가로 지정가 주문)
+        """
+        # 모의투자는 지정가만 가능 - price가 0이면 현재가 조회
+        if price == 0:
+            exchange_code = "NAS" if exchange == "NASD" else exchange.replace("AMEX", "AMS")
+            current_price_str = self.get_overseas_current_price(ticker, exchange_code)
+            if current_price_str:
+                price = float(current_price_str)
+                print(f"  📌 지정가 주문 (현재가): ${price:.2f}")
+            else:
+                print(f"  ❌ 현재가 조회 실패")
+                return None
+
+        url = f"{self.config.BASE_URL}/uapi/overseas-stock/v1/trading/order"
+
+        headers = {
+            "content-type": "application/json",
+            "authorization": f"Bearer {self.access_token}",
+            "appkey": self.config.APP_KEY,
+            "appsecret": self.config.APP_SECRET,
+            "tr_id": "VTTT1001U"  # 모의투자 매도
+        }
+
+        body = {
+            "CANO": self.config.ACCOUNT_NO,
+            "ACNT_PRDT_CD": "01",
+            "OVRS_EXCG_CD": exchange,
+            "PDNO": ticker,
+            "ORD_QTY": str(quantity),
+            "OVRS_ORD_UNPR": str(price),  # 지정가 필수
+            "ORD_SVR_DVSN_CD": "0",
+            "ORD_DVSN": "00"  # 00=지정가 (모의투자 필수)
+        }
+
+        self._rate_limit()
+        res = requests.post(url, headers=headers, data=json.dumps(body))
+
+        if res.status_code == 200:
+            result = res.json()
+            rt_cd = result.get('rt_cd', '')
+            msg1 = result.get('msg1', '')
+
+            if rt_cd == '0':
+                print(f"✅ 해외주식 매도 주문 성공: {ticker} {quantity}주")
+                return result
+            else:
+                print(f"❌ 해외주식 매도 주문 실패: {msg1}")
+                return None
+        else:
+            print(f"❌ 해외주식 매도 주문 실패: {res.text}")
+            return None
+
+    def get_overseas_ohlcv(self, ticker, exchange="NAS", period="D", count=100):
+        """해외주식 OHLCV 데이터 조회
+
+        Args:
+            ticker: 종목 심볼
+            exchange: 거래소 (NAS, NYSE, AMS)
+            period: 기간 (D=일봉, W=주봉, M=월봉)
+            count: 데이터 개수
+        """
+        url = f"{self.config.BASE_URL}/uapi/overseas-price/v1/quotations/dailyprice"
+
+        headers = {
+            "content-type": "application/json",
+            "authorization": f"Bearer {self.access_token}",
+            "appkey": self.config.APP_KEY,
+            "appsecret": self.config.APP_SECRET,
+            "tr_id": "HHDFS76240000"
+        }
+
+        params = {
+            "AUTH": "",
+            "EXCD": exchange,
+            "SYMB": ticker,
+            "GUBN": period,
+            "BYMD": "",  # 조회 시작일 (공백이면 최근부터)
+            "MODP": "1"   # 0=수정주가 미반영, 1=반영
+        }
+
+        self._rate_limit()
+        res = requests.get(url, headers=headers, params=params)
+
+        if res.status_code == 200:
+            result = res.json()
+            if 'output2' in result:
+                import pandas as pd
+                data = result['output2'][:count]
+
+                # 데이터 파싱
+                df = pd.DataFrame(data)
+                df['date'] = pd.to_datetime(df['xymd'])
+                df['open'] = df['open'].astype(float)
+                df['high'] = df['high'].astype(float)
+                df['low'] = df['low'].astype(float)
+                df['close'] = df['clos'].astype(float)
+                df['volume'] = df['tvol'].astype(float)
+
+                # 최신 데이터가 위에 있으므로 역순 정렬
+                df = df.iloc[::-1].reset_index(drop=True)
+
+                return df[['date', 'open', 'high', 'low', 'close', 'volume']]
+        else:
+            print(f"❌ 해외주식 OHLCV 조회 실패: {res.text}")
+
+        return None
+
+    def get_minute_ohlcv(self, stock_code, time_end="153000"):
+        """국내주식 분봉 데이터 조회 (당일만, 최대 30건)
+
+        Args:
+            stock_code: 종목 코드
+            time_end: 조회 종료 시간 (HHMMss 형식, 예: "153000" = 15:30:00)
+                     이 시간부터 거꾸로 30개 데이터 조회
+
+        Returns:
+            DataFrame: 분봉 데이터 (date, open, high, low, close, volume)
+        """
+        url = f"{self.config.BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice"
+
+        headers = {
+            "content-type": "application/json",
+            "authorization": f"Bearer {self.access_token}",
+            "appkey": self.config.APP_KEY,
+            "appsecret": self.config.APP_SECRET,
+            "tr_id": "FHKST03010200"
+        }
+
+        params = {
+            "fid_etc_cls_code": "",
+            "fid_cond_mrkt_div_code": "J",
+            "fid_input_iscd": stock_code,
+            "fid_input_hour_1": time_end,  # 조회 종료 시간
+            "fid_pw_data_incu_yn": "Y"     # 과거 데이터 포함 여부
+        }
+
+        self._rate_limit()
+        res = requests.get(url, headers=headers, params=params)
+
+        if res.status_code == 200:
+            result = res.json()
+
+            if 'output2' not in result:
+                print(f"❌ 분봉 데이터 없음")
+                return None
+
+            data = result['output2']
+
+            if not data or len(data) == 0:
+                print(f"❌ 분봉 데이터가 비어있습니다")
+                return None
+
+            import pandas as pd
+            df = pd.DataFrame(data)
+
+            # 컬럼명 변환 및 타입 변환
+            df['datetime'] = pd.to_datetime(df['stck_bsop_date'] + ' ' + df['stck_cntg_hour'], format='%Y%m%d %H%M%S')
+            df['open'] = df['stck_oprc'].astype(int)
+            df['high'] = df['stck_hgpr'].astype(int)
+            df['low'] = df['stck_lwpr'].astype(int)
+            df['close'] = df['stck_prpr'].astype(int)
+            df['volume'] = df['cntg_vol'].astype(int)
+
+            # 시간순 정렬 (과거 → 현재)
+            df = df.sort_values('datetime').reset_index(drop=True)
+
+            return df[['datetime', 'open', 'high', 'low', 'close', 'volume']]
+        else:
+            print("❌ 분봉 데이터 조회 실패:", res.text)
+            return None

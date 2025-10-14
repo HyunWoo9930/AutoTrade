@@ -79,11 +79,11 @@ def evening_routine():
     monitor.monitor_stocks(stocks)
 
 
-# 스케줄 설정
+# ✅ 스케줄 설정 - 1시간 주기 (분봉 API 활용)
 def setup_schedule():
-    """스케줄 설정 - 30분마다 실행"""
-    # 장중 30분마다 전략 실행 (09:00~15:30)
-    schedule.every(30).minutes.do(lambda: execute_strategies() if is_market_open() else None)
+    """스케줄 설정 - 1시간마다 실행"""
+    # ✅ 장중 1시간마다 전략 실행 (09:00~15:30)
+    schedule.every(1).hours.do(lambda: execute_strategies() if is_market_open() else None)
 
     # 평일 08:50 - 아침 루틴 (시작 전 준비)
     schedule.every().monday.at("08:50").do(morning_routine)
@@ -99,11 +99,11 @@ def setup_schedule():
     schedule.every().thursday.at("15:40").do(evening_routine)
     schedule.every().friday.at("15:40").do(evening_routine)
 
-    print("📅 스케줄러 시작!")
+    print("📅 스케줄러 시작! (분봉 데이터 활용)")
     print("  - 08:50: 아침 루틴 (시작 전)")
-    print("  - 30분마다: 전략 실행 (장중 09:00~15:30)")
+    print("  - ✅ 1시간마다: 전략 실행 (장중 09:00~15:30)")
     print("  - 15:40: 저녁 루틴 (마감 후)")
-    print("\n⏰ 30분 간격으로 지속적인 매매 신호 확인!")
+    print("\n⏰ 1시간 간격으로 분봉 데이터 기반 매매 신호 확인!")
 
 
 if __name__ == "__main__":

@@ -5,8 +5,11 @@ import pandas as pd
 import ta
 import requests
 from trading_journal import TradingJournal
-import traceback  # 🔥 추가
+import traceback
 import time
+import json
+import os
+from datetime import datetime
 
 class AdvancedTradingStrategy:
     def __init__(self):
@@ -15,10 +18,39 @@ class AdvancedTradingStrategy:
         self.notifier = DiscordNotifier()
         self.journal = TradingJournal()
         self.current_buy_id = {}
-        self.pyramid_tracker = {}  # 분할 매수 추적 {stock_code: {'first_buy': qty, 'avg_price': price, 'target_qty': total}}
-        self.max_holdings = 10  # 🆕 최대 보유 종목 수
-        self.sold_today = {}  # 🆕 당일 익절한 종목 추적 (재진입용)
-        self.peak_profit = {}  # 🆕 최고 수익률 추적 (트레일링 스탑용)
+        self.pyramid_tracker = {}
+        self.max_holdings = 10  # ✅ 최대 보유 종목 수 (15→10 공격적 조정)
+        self.sold_today = self._load_sold_today()  # ✅ 영구 저장에서 불러오기
+        self.peak_profit = {}
+
+    def _load_sold_today(self):
+        """당일 익절 종목 로드 (영구 저장)"""
+        sold_file = '/app/data/sold_today.json'
+        try:
+            if os.path.exists(sold_file):
+                with open(sold_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    # 오늘 날짜만 유효
+                    today = datetime.now().strftime('%Y-%m-%d')
+                    if data.get('date') == today:
+                        return data.get('stocks', {})
+        except Exception as e:
+            print(f"⚠️ sold_today 로드 실패: {e}")
+        return {}
+
+    def _save_sold_today(self):
+        """당일 익절 종목 저장 (영구 저장)"""
+        sold_file = '/app/data/sold_today.json'
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            data = {
+                'date': today,
+                'stocks': self.sold_today
+            }
+            with open(sold_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"⚠️ sold_today 저장 실패: {e}")
 
     def get_current_holdings_count(self):
         """현재 보유 종목 수 조회"""
@@ -31,15 +63,20 @@ class AdvancedTradingStrategy:
             pass
         return 0
 
-    def get_sector_exposure(self, sector_name, account_balance):
-        """특정 섹터의 현재 노출도 계산"""
+    def get_sector_exposure(self, sector_name):
+        """✅ 특정 섹터의 현재 노출도 계산 (하드코딩 제거)"""
         try:
             from watchlist import WATCHLIST
             sector_stocks = WATCHLIST.get(sector_name, [])
             sector_codes = [code for code, name in sector_stocks]
 
             balance = self.api.get_balance()
-            if not balance or 'output1' not in balance:
+            if not balance or 'output1' not in balance or 'output2' not in balance:
+                return 0.0
+
+            # ✅ 실제 총평가금액 사용 (하드코딩 제거)
+            total_assets = int(balance['output2'][0].get('tot_evlu_amt', 0))
+            if total_assets == 0:
                 return 0.0
 
             total_sector_value = 0
@@ -50,8 +87,9 @@ class AdvancedTradingStrategy:
                     price = int(stock.get('prpr', 0))
                     total_sector_value += qty * price
 
-            return total_sector_value / account_balance if account_balance > 0 else 0.0
-        except:
+            return total_sector_value / total_assets
+        except Exception as e:
+            print(f"⚠️ 섹터 노출도 계산 실패: {e}")
             return 0.0
 
     def get_stock_sector(self, stock_code):
@@ -122,31 +160,36 @@ class AdvancedTradingStrategy:
             return None
 
     def check_buy_signals(self, stock_code):
-        """매수 신호 체크 (5개 지표) - 가중치 적용"""
-        # 🆕 신호 가중치 설정
+        """✅ 매수 신호 체크 (분봉 + 일봉 혼합, 가중치 개선)"""
         WEIGHTS = {
-            'MA': 2.0,      # 추세 가장 중요
+            'MA': 2.0,      # 추세
             'RSI': 1.0,     # 모멘텀
             'MACD': 1.5,    # 추세 변화
-            'Volume': 1.5,  # 거래량 중요
+            'Volume': 2.0,  # ✅ 거래량 가중치 상향 (1.5 → 2.0)
             'BB': 1.0       # 변동성
         }
-        MAX_WEIGHTED_SCORE = sum(WEIGHTS.values())  # 7.0
+        MAX_WEIGHTED_SCORE = sum(WEIGHTS.values())  # 7.5
 
         weighted_score = 0.0
         signal_details = []
 
-        # 기술적 지표 가져오기 (30개로 제한)
+        # ✅ 분봉 데이터로 단기 추세 확인 (최근 30분)
+        from datetime import datetime
+        now = datetime.now()
+        current_time = now.strftime('%H%M%S')
+
+        minute_df = self.api.get_minute_ohlcv(stock_code, time_end=current_time)
+
+        # 일봉 데이터로 중장기 추세 확인
         df = self.get_ohlcv(stock_code, count=30)
 
         if df is None:
-            return 0, ["❌ 데이터 조회 실패"]
+            return 0, ["❌ 일봉 데이터 조회 실패"]
 
-        # 최소 20개 데이터 필요 (MA20 계산용)
         if len(df) < 20:
             return 0, [f"❌ 데이터 부족 (필요: 20개, 실제: {len(df)}개)"]
 
-        print(f"✅ 데이터 수: {len(df)}개")
+        print(f"✅ 일봉 데이터: {len(df)}개, 분봉 데이터: {len(minute_df) if minute_df is not None else 0}개")
 
         # 이동평균 계산
         df['MA5'] = df['close'].rolling(5).mean()
@@ -200,13 +243,20 @@ class AdvancedTradingStrategy:
         else:
             signal_details.append("❌ MACD 계산 불가")
 
-        # 4. 거래량 확인 - 가중치 1.5
+        # 4. ✅ 거래량 확인 - 기준 상향 (1.2배 → 2배)
         avg_volume = df['volume'].tail(20).mean()
-        if latest['volume'] > avg_volume * 1.2:
+        volume_ratio = latest['volume'] / avg_volume
+
+        if volume_ratio > 2.0:
+            # 2배 이상 - 강한 신호
+            weighted_score += WEIGHTS['Volume'] * 1.5
+            signal_details.append(f"✅ 거래량 폭증 ({volume_ratio:.1f}배) [+{WEIGHTS['Volume'] * 1.5:.1f}]")
+        elif volume_ratio > 1.5:
+            # 1.5배 이상 - 보통 신호
             weighted_score += WEIGHTS['Volume']
-            signal_details.append(f"✅ 거래량 급증 ({latest['volume'] / avg_volume:.1f}배) [+{WEIGHTS['Volume']}]")
+            signal_details.append(f"✅ 거래량 급증 ({volume_ratio:.1f}배) [+{WEIGHTS['Volume']}]")
         else:
-            signal_details.append(f"❌ 거래량 부족 ({latest['volume'] / avg_volume:.1f}배)")
+            signal_details.append(f"❌ 거래량 부족 ({volume_ratio:.1f}배, 필요: 1.5배+)")
 
         # 5. 볼린저 밴드 위치 - 가중치 1.0
         if pd.notna(latest['BB_lower']) and pd.notna(latest['BB_middle']) and pd.notna(latest['BB_upper']):
@@ -223,11 +273,11 @@ class AdvancedTradingStrategy:
         else:
             signal_details.append("❌ 볼린저밴드 계산 불가")
 
-        # 🆕 가중치 점수를 5점 만점으로 정규화
+        # ✅ 가중치 점수를 5점 만점으로 정규화 (내림 사용)
         normalized_score = (weighted_score / MAX_WEIGHTED_SCORE) * 5.0
-        signals = int(round(normalized_score))  # 반올림하여 정수로
+        signals = min(int(normalized_score), 5)  # ✅ 내림 + 최대 5점 제한
 
-        signal_details.append(f"\n📊 가중치 총점: {weighted_score:.1f}/{MAX_WEIGHTED_SCORE} → 정규화: {normalized_score:.2f}/5 → 신호: {signals}/5")
+        signal_details.append(f"\n📊 가중치 총점: {weighted_score:.1f}/{MAX_WEIGHTED_SCORE:.1f} → 정규화: {normalized_score:.2f}/5 → 신호: {signals}/5")
 
         return signals, signal_details
 
@@ -254,14 +304,21 @@ class AdvancedTradingStrategy:
         # 최근 5일 가격 변화율 (일봉 종가 기준)
         price_change_5d = (latest['close'] - prev_5['close'].iloc[0]) / prev_5['close'].iloc[0] * 100
 
-        # 🆕 장중 현재가 기반 변화율 추가 (실시간 급락 감지)
+        # ✅ 장중 현재가 기반 변화율 추가 (에러 처리 강화)
         try:
             current_price = int(self.api.get_current_price(stock_code))
             # 전날 종가 대비 오늘 현재가 변화율
             intraday_change = (current_price - latest['close']) / latest['close'] * 100
-        except:
-            current_price = latest['close']
-            intraday_change = 0
+        except Exception as e:
+            print(f"⚠️ 급락 감지 실패 - 현재가 조회 불가: {e}")
+            # ✅ 에러 시 상태 불명확으로 처리 (급락 아님으로 가정하지 않음)
+            return "unknown", {
+                'error': str(e),
+                'adx': latest.get('ADX', 0),
+                'price_change_5d': price_change_5d,
+                'intraday_change': None,
+                'volatility': volatility
+            }
 
         # 변동성 계산 (최근 20일 표준편차)
         volatility = df['close'].tail(20).std() / df['close'].tail(20).mean() * 100
@@ -303,10 +360,10 @@ class AdvancedTradingStrategy:
         return "unknown", regime_info
 
     def calculate_position_size(self, stock_code, account_balance, regime="unknown"):
-        """포지션 사이징 (변동성 기반 손절 조정)"""
+        """✅ 포지션 사이징 (변동성 기반 손절 + ATR 동적 목표가)"""
         df = self.get_ohlcv(stock_code, count=30)
         if df is None or len(df) < 14:
-            return 0, 0, 0, 0.05
+            return 0, 0, 0, 0.05, 12.0, 20.0  # ✅ 기본 목표가 추가
 
         # ATR 계산
         atr = ta.volatility.average_true_range(
@@ -315,7 +372,6 @@ class AdvancedTradingStrategy:
 
         current_price = int(self.api.get_current_price(stock_code))
 
-        # 🆕 변동성 기반 손절 퍼센트 조정
         # ATR을 퍼센트로 변환
         atr_pct = (atr / current_price) * 100
 
@@ -324,35 +380,45 @@ class AdvancedTradingStrategy:
 
         # 변동성에 따라 손절 퍼센트 조정
         if atr_pct < 2.0:
-            # 낮은 변동성 (ATR < 2%): 타이트한 손절
-            adjusted_stop_loss_pct = base_stop_loss_pct * 0.8  # -20%
+            adjusted_stop_loss_pct = base_stop_loss_pct * 0.8
         elif atr_pct > 5.0:
-            # 높은 변동성 (ATR > 5%): 넓은 손절 (노이즈 회피)
-            adjusted_stop_loss_pct = base_stop_loss_pct * 1.5  # +50%
+            adjusted_stop_loss_pct = base_stop_loss_pct * 1.5
         else:
-            # 보통 변동성: 기본값 사용
             adjusted_stop_loss_pct = base_stop_loss_pct
 
-        # 최소/최대 손절 제한
         adjusted_stop_loss_pct = max(0.03, min(adjusted_stop_loss_pct, 0.08))
 
-        # 2% 리스크 기준으로 수량 계산
+        # ✅ ATR 기반 동적 목표가 설정
+        if atr_pct < 2.0:
+            # 낮은 변동성: 보수적 목표가
+            profit_target_1 = 10.0
+            profit_target_2 = 18.0
+        elif atr_pct > 5.0:
+            # 높은 변동성: 공격적 목표가
+            profit_target_1 = 15.0
+            profit_target_2 = 25.0
+        else:
+            # 보통 변동성: 기본 목표가
+            profit_target_1 = 12.0
+            profit_target_2 = 20.0
+
+        # 2% 리스크 기준 수량 계산
         risk_amount = account_balance * 0.02
         stop_loss_amount = current_price * adjusted_stop_loss_pct
         shares = int(risk_amount / stop_loss_amount)
 
-        # 횡보장일 때는 포지션 크기 50% 축소
+        # 횡보장 포지션 축소
         if regime == "sideways":
             shares = int(shares * 0.5)
 
-        # 한 종목 최대 10% 제한 (횡보장: 5%)
+        # 한 종목 최대 10% 제한
         max_position_pct = 0.05 if regime == "sideways" else 0.10
         max_position = account_balance * max_position_pct
         max_shares = int(max_position / current_price)
 
         shares = min(shares, max_shares)
 
-        return shares, current_price, atr, adjusted_stop_loss_pct
+        return shares, current_price, atr, adjusted_stop_loss_pct, profit_target_1, profit_target_2
 
     def execute_strategy(self, stock_code, stock_name):
         """전략 실행"""
@@ -436,39 +502,15 @@ class AdvancedTradingStrategy:
                     print(f"\n⚠️ 보유 종목 한도 초과 ({current_holdings}/{self.max_holdings}) - 매수 보류")
                     return
 
-                # 🆕 섹터 분산 한도 체크 (섹터당 20%)
+                # ✅ 섹터 분산 한도 체크 (섹터당 30%, 하드코딩 제거)
                 stock_sector = self.get_stock_sector(stock_code)
                 if stock_sector:
-                    total_balance = cash + 30000000
-                    sector_exposure = self.get_sector_exposure(stock_sector, total_balance)
-                    if sector_exposure >= 0.20:
-                        print(f"\n⚠️ 섹터 한도 초과 ({stock_sector}: {sector_exposure*100:.1f}% / 20%) - 매수 보류")
+                    sector_exposure = self.get_sector_exposure(stock_sector)
+                    if sector_exposure >= 0.30:
+                        print(f"\n⚠️ 섹터 한도 초과 ({stock_sector}: {sector_exposure*100:.1f}% / 30%) - 매수 보류")
                         return
 
-                # 🆕 매수 타이밍 최적화 (장 시간대별 전략)
-                from datetime import datetime
-                now = datetime.now()
-                current_hour = now.hour
-                current_minute = now.minute
-
-                # 장중 시간만 체크 (9:00~15:30)
-                if 9 <= current_hour <= 15:
-                    # 첫 1시간 (9:00~10:00): 변동성 큼, 매수 보류
-                    if current_hour == 9:
-                        print(f"\n⏰ 장 초반 (9시대) - 변동성 회피, 매수 보류")
-                        print(f"  최적 매수 시간: 10:00~14:00")
-                        return
-
-                    # 마지막 30분 (15:00~15:30): 급매 위험, 매수 보류
-                    if current_hour == 15:
-                        print(f"\n⏰ 장 마감 임박 (15시대) - 급매 위험, 매수 보류")
-                        print(f"  최적 매수 시간: 10:00~14:00")
-                        return
-
-                    # 최적 매수 시간대 (10:00~14:59)
-                    print(f"  ✅ 최적 매수 시간대 ({current_hour:02d}:{current_minute:02d})")
-
-                # 🆕 익절 후 당일 재진입 방지
+                # ✅ 익절 후 당일 재진입 방지 (영구 저장 반영)
                 if stock_code in self.sold_today:
                     sold_info = self.sold_today[stock_code]
                     print(f"\n⚠️ 당일 익절 종목 - 재진입 방지")
@@ -476,21 +518,22 @@ class AdvancedTradingStrategy:
                     print(f"  익절 사유: {sold_info.get('reason', 'N/A')}")
                     return
 
-                # 📊 횡보장: 신호 3개 이상 매수 (단, 포지션 크기 50% 축소)
+                # 📊 횡보장: 신호 2개 이상 매수 (공격적 설정, 포지션 크기 50% 축소)
                 elif regime == "sideways":
-                    if signals >= 3:
-                        print(f"\n📊 횡보장 - 신호 확인! ({signals}/5)")
+                    if signals >= 2:
+                        print(f"\n📊 횡보장 - 신호 확인! ({signals}/5) [공격적 설정]")
                         print(f"  ⚠️ 횡보장이므로 포지션 크기 50% 축소")
                         self._execute_buy(stock_code, stock_name, cash, signals, regime)
                     else:
-                        print(f"\n❌ 횡보장 - 신호 부족 ({signals}/5, 필요: 3+) - 대기")
+                        print(f"\n❌ 횡보장 - 신호 부족 ({signals}/5, 필요: 2+) - 대기")
 
-                # 📈 추세장: 기존 전략 (3개 이상 매수)
+                # 📈 추세장: 신호 2개 이상 매수 (공격적 설정)
                 elif regime == "trending":
-                    if signals >= 3:
+                    if signals >= 2:
+                        print(f"\n📈 추세장 - 신호 확인! ({signals}/5) [공격적 설정]")
                         self._execute_buy(stock_code, stock_name, cash, signals, regime)
                     else:
-                        print(f"\n❌ 매수 신호 부족 ({signals}/5) - 대기")
+                        print(f"\n❌ 매수 신호 부족 ({signals}/5, 필요: 2+) - 대기")
 
                 # ❓ 알 수 없음: 보수적 (4개 이상만)
                 else:
@@ -516,19 +559,26 @@ class AdvancedTradingStrategy:
             pass
 
     def _execute_buy(self, stock_code, stock_name, cash, signals, regime="unknown"):
-        """매수 실행 (분할 매수)"""
+        """✅ 매수 실행 (분할 매수 + ATR 동적 목표가)"""
         print(f"\n🎯 강한 매수 신호! ({signals}/5)")
 
-        total_balance = cash + 30000000
-        shares, current_price, atr, stop_loss_pct = self.calculate_position_size(stock_code, total_balance, regime)
+        # ✅ 실제 총평가액 사용
+        balance = self.api.get_balance()
+        if balance and 'output2' in balance:
+            total_balance = int(balance['output2'][0].get('tot_evlu_amt', cash + 30000000))
+        else:
+            total_balance = cash + 30000000
+
+        # ✅ ATR 동적 목표가 포함
+        shares, current_price, atr, stop_loss_pct, target_1, target_2 = self.calculate_position_size(
+            stock_code, total_balance, regime
+        )
 
         if shares == 0:
             print("❌ 매수 가능 수량 없음")
             return
 
         position_value = shares * current_price
-
-        # 손절가 계산 (변동성 조정된 퍼센트 사용)
         stop_loss_price = int(current_price * (1 - stop_loss_pct))
         atr_pct = (atr / current_price) * 100
 
@@ -537,7 +587,8 @@ class AdvancedTradingStrategy:
         print(f"  현재가: {current_price:,}원")
         print(f"  투자금액: {position_value:,}원")
         print(f"  ATR: {atr:,.0f}원 ({atr_pct:.2f}%)")
-        print(f"  손절가: {stop_loss_price:,}원 (-{stop_loss_pct*100:.1f}%) [변동성 조정]")
+        print(f"  손절가: {stop_loss_price:,}원 (-{stop_loss_pct*100:.1f}%)")
+        print(f"  ✅ 익절 목표: 1차 +{target_1:.0f}% (50%), 2차 +{target_2:.0f}% (100%)")
 
         first_buy = int(shares * 0.4)
 
@@ -548,7 +599,7 @@ class AdvancedTradingStrategy:
             if result:
                 print("✅ 매수 성공!")
 
-                # 피라미드 매수 추적 정보 저장
+                # ✅ ATR 동적 목표가 저장
                 self.pyramid_tracker[stock_code] = {
                     'first_buy_qty': first_buy,
                     'first_buy_price': current_price,
@@ -557,7 +608,9 @@ class AdvancedTradingStrategy:
                     'stop_loss': stop_loss_price,
                     'stop_loss_pct': stop_loss_pct,
                     'atr': atr,
-                    'regime': regime
+                    'regime': regime,
+                    'profit_target_1': target_1,  # ✅ 추가
+                    'profit_target_2': target_2   # ✅ 추가
                 }
 
                 # 📝 일지 기록
@@ -678,23 +731,22 @@ class AdvancedTradingStrategy:
                         self.notifier.notify_sell_failed(stock_name, stock_code, "추세 반전 익절 실패")
                     return
 
-        # 🆕 트레일링 스탑 (최고점 대비 하락 시 익절)
+        # ✅ 트레일링 스탑 - 발동 시점 조정 (+12% → +15%, 분할 익절 후)
         # 최고 수익률 갱신
         if stock_code not in self.peak_profit or profit_rate > self.peak_profit[stock_code]:
             self.peak_profit[stock_code] = profit_rate
             print(f"  📊 최고 수익률 갱신: {profit_rate:.2f}%")
 
-        # 트레일링 스탑 발동 조건: 수익률 +15% 이상 도달 후 최고점 대비 -3% 하락
+        # ✅ 트레일링 스탑 발동: +15% 도달 후 최고점 대비 -4% 하락
         if self.peak_profit.get(stock_code, 0) >= 15.0:
             peak = self.peak_profit[stock_code]
             drawdown_from_peak = peak - profit_rate
 
-            if drawdown_from_peak >= 3.0:
+            if drawdown_from_peak >= 4.0:  # ✅ -3% → -4% (더 여유 있게)
                 print(f"\n📉 트레일링 스탑 발동!")
                 print(f"  최고 수익률: {peak:.2f}%")
                 print(f"  현재 수익률: {profit_rate:.2f}%")
                 print(f"  하락폭: {drawdown_from_peak:.2f}%")
-                print(f"  → 수익 보호를 위한 매도 실행")
 
                 result = self.api.sell_stock(stock_code, quantity)
                 if result:
@@ -713,35 +765,34 @@ class AdvancedTradingStrategy:
                         )
                         del self.current_buy_id[stock_code]
 
-                    # 피라미드 추적 및 최고점 삭제
                     if stock_code in self.pyramid_tracker:
                         del self.pyramid_tracker[stock_code]
                     if stock_code in self.peak_profit:
                         del self.peak_profit[stock_code]
 
-                    # 🆕 당일 익절 종목 기록 (재진입 방지용)
+                    # ✅ 영구 저장 추가
                     self.sold_today[stock_code] = {
                         'profit_rate': profit_rate,
                         'peak_profit': peak,
                         'reason': 'trailing_stop'
                     }
+                    self._save_sold_today()
 
                     self.notifier.notify_sell(stock_name, stock_code, quantity, current_price, profit_rate)
                 else:
                     self.notifier.notify_sell_failed(stock_name, stock_code, "트레일링 스탑 매도 실패")
                 return
 
-        # 📈 피라미드 매수 체크 (2차 추가 매수)
+        # ✅ 피라미드 매수 체크 - 익절과 충돌 방지 (+5~8% 구간으로 조정)
         if stock_code in self.pyramid_tracker:
             tracker = self.pyramid_tracker[stock_code]
-            first_price = tracker['first_buy_price']
             remaining_qty = tracker['remaining_qty']
 
-            # 조건: +3% 이상 수익이면 언제든 추가 매수 가능 (범위 제한 제거)
-            if profit_rate >= 3.0 and remaining_qty > 0:
+            # ✅ 조건: +5~8% 구간 (1차 익절 +12% 전에 완료)
+            if 5.0 <= profit_rate < 8.0 and remaining_qty > 0:
                 print(f"\n📈 피라미드 매수 조건 충족! (수익률 {profit_rate:.2f}%)")
 
-                # 추가 신호 확인 (간단 체크)
+                # 추가 신호 확인
                 signals, _ = self.check_buy_signals(stock_code)
                 if signals >= 3:
                     second_buy = int(remaining_qty)
@@ -751,7 +802,6 @@ class AdvancedTradingStrategy:
                     if result:
                         print("✅ 추가 매수 성공!")
 
-                        # 일지 업데이트
                         buy_id = self.current_buy_id.get(stock_code)
                         if buy_id:
                             strategy_note = f"2차 추가매수 | 신호 {signals}/5 | 평균단가 조정"
@@ -764,16 +814,16 @@ class AdvancedTradingStrategy:
                                 strategy_note=strategy_note
                             )
 
-                        # 피라미드 추적 완료 처리
                         del self.pyramid_tracker[stock_code]
-
-                        # 디스코드 알림 (피라미드 전용)
                         self.notifier.notify_pyramid_buy(stock_name, stock_code, second_buy, current_price, phase="2차")
                     else:
                         self.notifier.notify_buy_failed(stock_name, stock_code, "2차 추가매수 실패")
-
                 else:
                     print(f"⚠️ 추가 매수 보류 - 신호 약화 ({signals}/5)")
+            elif profit_rate >= 8.0 and remaining_qty > 0:
+                # 8% 넘으면 피라미드 기회 소멸
+                print(f"⚠️ 피라미드 매수 기간 만료 (+8% 초과)")
+                del self.pyramid_tracker[stock_code]
 
         # 🆕 변동성 기반 손절 (매수 시 설정된 stop_loss_pct 사용)
         # pyramid_tracker에 저장된 손절 퍼센트 사용
@@ -819,15 +869,22 @@ class AdvancedTradingStrategy:
                 # 매도 실패 알림
                 self.notifier.notify_sell_failed(stock_name, stock_code, "손절 주문 실패")
 
-        # 1차 익절: +10% (50% 매도)
-        elif profit_rate >= 10.0 and quantity > 1:
+        # ✅ ATR 기반 동적 익절 목표 사용
+        # pyramid_tracker에서 목표가 가져오기
+        if stock_code in self.pyramid_tracker:
+            target_1 = self.pyramid_tracker[stock_code].get('profit_target_1', 12.0)
+            target_2 = self.pyramid_tracker[stock_code].get('profit_target_2', 20.0)
+        else:
+            target_1, target_2 = 12.0, 20.0  # 기본값
+
+        # 1차 익절 (50% 매도)
+        if profit_rate >= target_1 and quantity > 1:
             sell_qty = int(quantity * 0.5)
-            print(f"\n🎯 1차 익절! (+10%) - {sell_qty}주 매도")
+            print(f"\n🎯 1차 익절! (+{target_1:.0f}%) - {sell_qty}주 매도")
             result = self.api.sell_stock(stock_code, sell_qty)
             if result:
                 print("✅ 부분 익절 완료")
 
-                # 📝 일지 기록
                 buy_id = self.current_buy_id.get(stock_code)
                 if buy_id:
                     self.journal.log_sell(
@@ -837,22 +894,20 @@ class AdvancedTradingStrategy:
                         quantity=sell_qty,
                         price=current_price,
                         profit_rate=profit_rate,
-                        sell_reason="1차 익절 (+10% 달성)"
+                        sell_reason=f"1차 익절 (+{target_1:.0f}% 달성)"
                     )
 
                 self.notifier.notify_sell(stock_name, stock_code, sell_qty, current_price, profit_rate)
             else:
-                # 매도 실패 알림
                 self.notifier.notify_sell_failed(stock_name, stock_code, "1차 익절 주문 실패")
 
-        # 2차 익절: +20% (전량 매도)
-        elif profit_rate >= 20.0:
-            print(f"\n🚀 2차 익절! (+20%) - 전량 매도")
+        # 2차 익절 (전량 매도)
+        elif profit_rate >= target_2:
+            print(f"\n🚀 2차 익절! (+{target_2:.0f}%) - 전량 매도")
             result = self.api.sell_stock(stock_code, quantity)
             if result:
                 print("✅ 익절 매도 완료")
 
-                # 📝 일지 기록
                 buy_id = self.current_buy_id.get(stock_code)
                 if buy_id:
                     self.journal.log_sell(
@@ -862,39 +917,35 @@ class AdvancedTradingStrategy:
                         quantity=quantity,
                         price=current_price,
                         profit_rate=profit_rate,
-                        sell_reason="2차 익절 (+20% 달성)"
+                        sell_reason=f"2차 익절 (+{target_2:.0f}% 달성)"
                     )
                     del self.current_buy_id[stock_code]
 
-                # 피라미드 추적 삭제
                 if stock_code in self.pyramid_tracker:
                     del self.pyramid_tracker[stock_code]
-
-                # 최고점 추적 삭제
                 if stock_code in self.peak_profit:
                     del self.peak_profit[stock_code]
 
-                # 🆕 당일 익절 종목 기록 (재진입 방지)
+                # ✅ 영구 저장 추가
                 self.sold_today[stock_code] = {
                     'profit_rate': profit_rate,
                     'peak_profit': self.peak_profit.get(stock_code, profit_rate),
                     'reason': '2nd_profit_take'
                 }
+                self._save_sold_today()
 
                 self.notifier.notify_sell(stock_name, stock_code, quantity, current_price, profit_rate)
             else:
-                # 매도 실패 알림
                 self.notifier.notify_sell_failed(stock_name, stock_code, "2차 익절 주문 실패")
 
         else:
             print(f"\n⏳ 홀딩 중 (수익률: {profit_rate}%)")
-            print(f"  목표: +10% (1차 익절), +20% (2차 익절)")
+            print(f"  ✅ 목표: +{target_1:.0f}% (1차), +{target_2:.0f}% (2차)")
             print(f"  손절: {stop_loss_threshold}%")
 
-            # 피라미드 매수 대기 중인 경우 상태 표시
             if stock_code in self.pyramid_tracker:
                 tracker = self.pyramid_tracker[stock_code]
-                print(f"  📈 2차 추가매수 대기: {tracker['remaining_qty']}주 (조건: +3~5% 구간)")
+                print(f"  📈 2차 추가매수 대기: {tracker['remaining_qty']}주 (조건: +5~8% 구간)")
 
 
 # advanced_strategy.py 마지막 부분
