@@ -6,7 +6,9 @@ import pandas as pd
 
 
 class TradingJournal:
-    def __init__(self, journal_file="trading_journal.json"):
+    def __init__(self, journal_file="data/trading_journal.json"):
+        # 디렉토리 생성 (없으면)
+        os.makedirs(os.path.dirname(journal_file), exist_ok=True)
         self.journal_file = journal_file
         self.trades = self._load_journal()
 

@@ -27,7 +27,7 @@ spec:
               mountPath: /app/watchlist.py
               subPath: watchlist.py
             - name: journal
-              mountPath: /app/trading_journal.json
+              mountPath: /app/data
           volumes:
           - name: watchlist
             configMap:
