@@ -276,6 +276,78 @@ class DiscordNotifier:
         color = 0x2ecc71 if stats.get('profit', 0) > 0 else 0xe74c3c
         self._send('report', msg, color, "📊 일일 리포트")
 
+    # ========== 시장 상태 알림 (market 채널) ==========
+
+    def notify_market_regime(self, stock_name, code, regime, regime_info):
+        """시장 상태 감지 알림"""
+        regime_emoji = {
+            "trending": "📈",
+            "sideways": "📊",
+            "crash": "🚨",
+            "unknown": "❓"
+        }
+        regime_color = {
+            "trending": 0x2ecc71,
+            "sideways": 0xf39c12,
+            "crash": 0xe74c3c,
+            "unknown": 0x95a5a6
+        }
+
+        emoji = regime_emoji.get(regime, "❓")
+        color = regime_color.get(regime, 0x95a5a6)
+
+        msg = f"""
+{emoji} **시장 상태: {regime.upper()}**
+
+📊 {stock_name} (`{code}`)
+
+**지표**
+  • ADX: {regime_info.get('adx', 0):.1f}
+  • 5일 변화율: {regime_info.get('price_change_5d', 0):.2f}%
+  • 변동성: {regime_info.get('volatility', 0):.2f}%
+
+⏰ {datetime.now().strftime('%H:%M:%S')}
+"""
+        self._send('market', msg, color, f"{emoji} 시장 상태")
+
+    def notify_pyramid_buy(self, stock_name, code, qty, price, phase="2차"):
+        """피라미드 추가 매수 알림"""
+        amount = int(price) * qty
+        msg = f"""
+📈 **피라미드 매수 ({phase})**
+
+📊 **{stock_name}** (`{code}`)
+💰 {qty}주 × {price:,}원
+💵 총 {amount:,}원
+
+✅ 수익 확인 후 추가 진입
+📊 평균 단가 재조정
+
+⏰ {datetime.now().strftime('%H:%M:%S')}
+"""
+        self._send('trade', msg, 0x3498db, f"📈 추가매수 ({phase})")
+
+    def notify_crash_protection(self, stock_name, code, qty, price, profit_rate):
+        """급락장 긴급 청산 알림"""
+        amount = int(price) * qty
+        profit = int(amount * profit_rate / 100)
+
+        msg = f"""
+🚨 **급락장 긴급 청산!**
+
+📊 **{stock_name}** (`{code}`)
+💰 {qty}주 × {price:,}원
+💵 총 {amount:,}원
+
+📉 수익률: **{profit_rate:+.2f}%**
+💸 손익: **{profit:+,}원**
+
+⚠️ 급락장 감지로 인한 보호 매도
+
+⏰ {datetime.now().strftime('%H:%M:%S')}
+"""
+        self._send('trade', msg, 0xe74c3c, "🚨 긴급 청산")
+
     # ========== 기존 호환성 메서드 ==========
 
     def notify_strategy(self, title, message):

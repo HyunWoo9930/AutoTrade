@@ -15,6 +15,7 @@ class AdvancedTradingStrategy:
         self.notifier = DiscordNotifier()
         self.journal = TradingJournal()
         self.current_buy_id = {}
+        self.pyramid_tracker = {}  # 분할 매수 추적 {stock_code: {'first_buy': qty, 'avg_price': price, 'target_qty': total}}
 
     def get_ohlcv(self, stock_code, count=100):
         """일봉 데이터 조회"""
@@ -165,6 +166,57 @@ class AdvancedTradingStrategy:
 
         return signals, signal_details
 
+    def detect_market_regime(self, stock_code):
+        """시장 상태 감지: trending, sideways, crash"""
+        df = self.get_ohlcv(stock_code, count=30)
+        if df is None or len(df) < 20:
+            return "unknown", {}
+
+        # ADX (Average Directional Index) 계산 - 추세 강도 측정
+        adx_indicator = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=14)
+        df['ADX'] = adx_indicator.adx()
+
+        # ATR 계산
+        df['ATR'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
+
+        # 이동평균 계산
+        df['MA5'] = df['close'].rolling(5).mean()
+        df['MA20'] = df['close'].rolling(20).mean()
+
+        latest = df.iloc[-1]
+        prev_5 = df.iloc[-5:] if len(df) >= 5 else df
+
+        # 최근 5일 가격 변화율
+        price_change_5d = (latest['close'] - prev_5['close'].iloc[0]) / prev_5['close'].iloc[0] * 100
+
+        # 변동성 계산 (최근 20일 표준편차)
+        volatility = df['close'].tail(20).std() / df['close'].tail(20).mean() * 100
+
+        regime_info = {
+            'adx': latest['ADX'],
+            'atr': latest['ATR'],
+            'price_change_5d': price_change_5d,
+            'volatility': volatility,
+            'ma5': latest['MA5'],
+            'ma20': latest['MA20']
+        }
+
+        # 🚨 급락장 감지: 5일간 -10% 이상 하락 또는 변동성 급증
+        if price_change_5d < -10 or volatility > 8:
+            return "crash", regime_info
+
+        # 📊 횡보장 감지: ADX < 25 (약한 추세) + MA5와 MA20 근접
+        if pd.notna(latest['ADX']) and latest['ADX'] < 25:
+            ma_diff = abs(latest['MA5'] - latest['MA20']) / latest['MA20'] * 100
+            if ma_diff < 2:  # MA 간격이 2% 이내
+                return "sideways", regime_info
+
+        # 📈 추세장 감지: ADX >= 25 (강한 추세)
+        if pd.notna(latest['ADX']) and latest['ADX'] >= 25:
+            return "trending", regime_info
+
+        return "unknown", regime_info
+
     def calculate_position_size(self, stock_code, account_balance):
         """포지션 사이징 (ATR 기반)"""
         df = self.get_ohlcv(stock_code, count=30)
@@ -199,6 +251,18 @@ class AdvancedTradingStrategy:
         print(f"{'=' * 60}\n")
 
         try:
+            # 0단계: 시장 상태 감지
+            regime, regime_info = self.detect_market_regime(stock_code)
+            print(f"🌐 시장 상태: {regime.upper()}")
+            if regime_info:
+                print(f"  ADX: {regime_info.get('adx', 0):.1f}")
+                print(f"  5일 변화율: {regime_info.get('price_change_5d', 0):.2f}%")
+                print(f"  변동성: {regime_info.get('volatility', 0):.2f}%\n")
+
+                # 급락장이나 횡보장 감지 시 디스코드 알림
+                if regime in ["crash", "sideways"]:
+                    self.notifier.notify_market_regime(stock_name, stock_code, regime, regime_info)
+
             # 1단계: 매수 신호 확인
             signals, details = self.check_buy_signals(stock_code)
 
@@ -246,14 +310,36 @@ class AdvancedTradingStrategy:
                         stock_name, stock_code, holding_qty, profit_rate
                     )
 
-            # 3단계: 매매 결정
+            # 3단계: 매매 결정 (시장 상태에 따라 분기)
             if holding_qty > 0:
-                self._manage_position(stock_code, stock_name, holding_qty, profit_rate)
+                self._manage_position(stock_code, stock_name, holding_qty, profit_rate, regime)
             else:
-                if signals >= 3:
-                    self._execute_buy(stock_code, stock_name, cash, signals)
+                # 🚨 급락장: 신호가 강해도 매수 금지
+                if regime == "crash":
+                    print(f"\n🚨 급락장 감지! 매수 금지 (변동성 {regime_info.get('volatility', 0):.2f}%)")
+                    return
+
+                # 📊 횡보장: 신호 임계치 상향 (4개 이상만 매수)
+                elif regime == "sideways":
+                    if signals >= 4:
+                        print(f"\n📊 횡보장 - 강한 신호 확인! (4+)")
+                        self._execute_buy(stock_code, stock_name, cash, signals, regime)
+                    else:
+                        print(f"\n❌ 횡보장 - 신호 부족 ({signals}/5, 필요: 4+) - 대기")
+
+                # 📈 추세장: 기존 전략 (3개 이상 매수)
+                elif regime == "trending":
+                    if signals >= 3:
+                        self._execute_buy(stock_code, stock_name, cash, signals, regime)
+                    else:
+                        print(f"\n❌ 매수 신호 부족 ({signals}/5) - 대기")
+
+                # ❓ 알 수 없음: 보수적 (4개 이상만)
                 else:
-                    print(f"\n❌ 매수 신호 부족 ({signals}/5) - 대기")
+                    if signals >= 4:
+                        self._execute_buy(stock_code, stock_name, cash, signals, regime)
+                    else:
+                        print(f"\n❌ 시장 상태 불명확 - 신호 부족 ({signals}/5, 필요: 4+) - 대기")
 
         except Exception as e:
             # 🔔 에러 알림
@@ -271,8 +357,8 @@ class AdvancedTradingStrategy:
             # 에러는 기록하되 프로그램은 계속 진행
             pass
 
-    def _execute_buy(self, stock_code, stock_name, cash, signals):
-        """매수 실행"""
+    def _execute_buy(self, stock_code, stock_name, cash, signals, regime="unknown"):
+        """매수 실행 (분할 매수)"""
         print(f"\n🎯 강한 매수 신호! ({signals}/5)")
 
         total_balance = cash + 30000000
@@ -294,14 +380,25 @@ class AdvancedTradingStrategy:
         first_buy = int(shares * 0.4)
 
         if first_buy > 0:
-            print(f"\n💰 1차 매수 실행: {first_buy}주")
+            print(f"\n💰 1차 매수 실행: {first_buy}주 (40%)")
             result = self.api.buy_stock(stock_code, first_buy)
 
             if result:
                 print("✅ 매수 성공!")
 
+                # 피라미드 매수 추적 정보 저장
+                self.pyramid_tracker[stock_code] = {
+                    'first_buy_qty': first_buy,
+                    'first_buy_price': current_price,
+                    'target_qty': shares,
+                    'remaining_qty': shares - first_buy,
+                    'stop_loss': current_price - int(atr * 2),
+                    'atr': atr,
+                    'regime': regime
+                }
+
                 # 📝 일지 기록
-                strategy_note = f"신호 {signals}/5 | 손절가: {current_price - int(atr * 2):,}원"
+                strategy_note = f"신호 {signals}/5 | 시장: {regime} | 손절가: {current_price - int(atr * 2):,}원 | 분할: 1/2"
                 buy_id = self.journal.log_buy(
                     stock_code=stock_code,
                     stock_name=stock_name,
@@ -314,28 +411,31 @@ class AdvancedTradingStrategy:
 
                 # 디스코드 알림
                 self.notifier.notify_buy(stock_name, stock_code, first_buy, current_price)
+                regime_emoji = {"trending": "📈", "sideways": "📊", "crash": "🚨"}.get(regime, "❓")
                 self.notifier.notify_strategy(
-                    f"{stock_name} 매수 전략",
+                    f"{stock_name} 매수 전략 (1차)",
                     f"신호: {signals}/5\n"
+                    f"시장 상태: {regime_emoji} {regime}\n"
                     f"수량: {first_buy}주 (40% 분할)\n"
+                    f"목표: {shares}주 (2차 추가매수 대기)\n"
                     f"손절가: {current_price - int(atr * 2):,}원"
                 )
             else:
                 # 매수 실패 알림
                 self.notifier.notify_buy_failed(stock_name, stock_code, "주문 실패 (장 마감 또는 예수금 부족)")
 
-    def _manage_position(self, stock_code, stock_name, quantity, profit_rate):
-        """포지션 관리 (익절/손절)"""
+    def _manage_position(self, stock_code, stock_name, quantity, profit_rate, regime="unknown"):
+        """포지션 관리 (익절/손절/추가매수)"""
         print(f"\n📊 포지션 관리 중...")
 
         current_price = int(self.api.get_current_price(stock_code))
 
-        # 손절: -5% 이하
-        if profit_rate <= -5.0:
-            print(f"\n🚨 손절 라인! ({profit_rate}% <= -5%)")
+        # 🚨 급락장 감지 시 강제 청산
+        if regime == "crash":
+            print(f"\n🚨 급락장 감지! 보유 포지션 긴급 청산")
             result = self.api.sell_stock(stock_code, quantity)
             if result:
-                print("✅ 손절 매도 완료")
+                print("✅ 긴급 청산 완료")
 
                 # 📝 일지 기록
                 buy_id = self.current_buy_id.get(stock_code)
@@ -347,9 +447,96 @@ class AdvancedTradingStrategy:
                         quantity=quantity,
                         price=current_price,
                         profit_rate=profit_rate,
-                        sell_reason="손절 (-5% 도달)"
+                        sell_reason="🚨 급락장 긴급 청산"
                     )
                     del self.current_buy_id[stock_code]
+
+                # 피라미드 추적 삭제
+                if stock_code in self.pyramid_tracker:
+                    del self.pyramid_tracker[stock_code]
+
+                # 급락장 긴급 청산 전용 알림
+                self.notifier.notify_crash_protection(stock_name, stock_code, quantity, current_price, profit_rate)
+            else:
+                self.notifier.notify_sell_failed(stock_name, stock_code, "긴급 청산 주문 실패")
+            return
+
+        # 📈 피라미드 매수 체크 (2차 추가 매수)
+        if stock_code in self.pyramid_tracker:
+            tracker = self.pyramid_tracker[stock_code]
+            first_price = tracker['first_buy_price']
+            remaining_qty = tracker['remaining_qty']
+
+            # 조건: +3~5% 수익 구간에서 추가 매수 (추세 확인)
+            if 3.0 <= profit_rate <= 5.0 and remaining_qty > 0:
+                print(f"\n📈 피라미드 매수 조건 충족! (수익률 {profit_rate:.2f}%)")
+
+                # 추가 신호 확인 (간단 체크)
+                signals, _ = self.check_buy_signals(stock_code)
+                if signals >= 3:
+                    second_buy = int(remaining_qty)
+                    print(f"💰 2차 추가 매수 실행: {second_buy}주 (60%)")
+
+                    result = self.api.buy_stock(stock_code, second_buy)
+                    if result:
+                        print("✅ 추가 매수 성공!")
+
+                        # 일지 업데이트
+                        buy_id = self.current_buy_id.get(stock_code)
+                        if buy_id:
+                            strategy_note = f"2차 추가매수 | 신호 {signals}/5 | 평균단가 조정"
+                            self.journal.log_buy(
+                                stock_code=stock_code,
+                                stock_name=stock_name,
+                                quantity=second_buy,
+                                price=current_price,
+                                signals=signals,
+                                strategy_note=strategy_note
+                            )
+
+                        # 피라미드 추적 완료 처리
+                        del self.pyramid_tracker[stock_code]
+
+                        # 디스코드 알림 (피라미드 전용)
+                        self.notifier.notify_pyramid_buy(stock_name, stock_code, second_buy, current_price, phase="2차")
+                    else:
+                        self.notifier.notify_buy_failed(stock_name, stock_code, "2차 추가매수 실패")
+
+                else:
+                    print(f"⚠️ 추가 매수 보류 - 신호 약화 ({signals}/5)")
+
+        # 손절: -5% 이하 (또는 급락장 손절 강화)
+        stop_loss_threshold = -5.0
+        if regime == "crash":
+            stop_loss_threshold = -3.0  # 급락장에서는 손절 라인 강화
+
+        if profit_rate <= stop_loss_threshold:
+            print(f"\n🚨 손절 라인! ({profit_rate}% <= {stop_loss_threshold}%)")
+            result = self.api.sell_stock(stock_code, quantity)
+            if result:
+                print("✅ 손절 매도 완료")
+
+                # 📝 일지 기록
+                buy_id = self.current_buy_id.get(stock_code)
+                if buy_id:
+                    sell_reason = f"손절 ({stop_loss_threshold}% 도달)"
+                    if regime == "crash":
+                        sell_reason = "🚨 급락장 강화 손절 (-3% 도달)"
+
+                    self.journal.log_sell(
+                        buy_id=buy_id,
+                        stock_code=stock_code,
+                        stock_name=stock_name,
+                        quantity=quantity,
+                        price=current_price,
+                        profit_rate=profit_rate,
+                        sell_reason=sell_reason
+                    )
+                    del self.current_buy_id[stock_code]
+
+                # 피라미드 추적 삭제
+                if stock_code in self.pyramid_tracker:
+                    del self.pyramid_tracker[stock_code]
 
                 self.notifier.notify_sell(stock_name, stock_code, quantity, current_price, profit_rate)
             else:
@@ -403,6 +590,10 @@ class AdvancedTradingStrategy:
                     )
                     del self.current_buy_id[stock_code]
 
+                # 피라미드 추적 삭제
+                if stock_code in self.pyramid_tracker:
+                    del self.pyramid_tracker[stock_code]
+
                 self.notifier.notify_sell(stock_name, stock_code, quantity, current_price, profit_rate)
             else:
                 # 매도 실패 알림
@@ -411,7 +602,12 @@ class AdvancedTradingStrategy:
         else:
             print(f"\n⏳ 홀딩 중 (수익률: {profit_rate}%)")
             print(f"  목표: +10% (1차 익절), +20% (2차 익절)")
-            print(f"  손절: -5%")
+            print(f"  손절: {stop_loss_threshold}%")
+
+            # 피라미드 매수 대기 중인 경우 상태 표시
+            if stock_code in self.pyramid_tracker:
+                tracker = self.pyramid_tracker[stock_code]
+                print(f"  📈 2차 추가매수 대기: {tracker['remaining_qty']}주 (조건: +3~5% 구간)")
 
 
 # advanced_strategy.py 마지막 부분
