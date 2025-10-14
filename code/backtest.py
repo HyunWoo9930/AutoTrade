@@ -38,23 +38,24 @@ class Backtester:
 
         Args:
             stock_code: 종목 코드
-            start_date: 시작일 (YYYYMMDD)
-            end_date: 종료일 (YYYYMMDD)
+            start_date: 시작일 (YYYYMMDD) - 참고용
+            end_date: 종료일 (YYYYMMDD) - 참고용
 
         Returns:
             DataFrame with OHLCV data
         """
-        print(f"  데이터 조회 중: {stock_code} ({start_date} ~ {end_date})")
+        print(f"  데이터 조회 중: {stock_code}")
 
-        # KIS API로 과거 데이터 조회
-        df = self.strategy.get_ohlcv(stock_code, count=500)  # 최대한 많이
+        # KIS API로 과거 데이터 조회 (최근 30일만 가능)
+        df = self.strategy.get_ohlcv(stock_code, count=100)  # 최대한 많이
 
         if df is None or len(df) == 0:
             return pd.DataFrame()
 
-        # 날짜 필터링
+        # 날짜 문자열 추가
         df['date_str'] = df['date'].dt.strftime('%Y%m%d')
-        df = df[(df['date_str'] >= start_date) & (df['date_str'] <= end_date)]
+
+        print(f"    ✅ {len(df)}일 데이터 수집")
 
         return df
 
@@ -458,11 +459,12 @@ if __name__ == "__main__":
     # 종목 목록
     stocks = get_all_stocks()
 
-    # 백테스팅 기간 (2024년 전체 - 실제 과거 데이터)
-    start_date = "20240101"
-    end_date = "20241231"
+    # 백테스팅 기간 (KIS API는 최근 30일만 제공)
+    end_date = datetime.now().strftime('%Y%m%d')
+    start_date = (datetime.now() - timedelta(days=30)).strftime('%Y%m%d')
 
     print(f"\n⚠️ 백테스팅 기간: {start_date} ~ {end_date}")
+    print(f"⚠️ 제한사항: KIS API는 최근 30일 데이터만 제공")
     print(f"⚠️ 테스트 종목: 10개 (전체 {len(stocks)}개 중)\n")
 
     # 실행
