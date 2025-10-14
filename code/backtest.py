@@ -205,7 +205,7 @@ class Backtester:
         print("📊 1단계: 과거 데이터 수집 중...")
         historical_data = {}
 
-        for code, name in stock_codes[:5]:  # 테스트: 5개 종목만
+        for code, name in stock_codes[:10]:  # 10개 종목 테스트
             df = self.get_historical_data(code, start_date, end_date)
             if len(df) > 0:
                 historical_data[code] = {
@@ -458,9 +458,12 @@ if __name__ == "__main__":
     # 종목 목록
     stocks = get_all_stocks()
 
-    # 백테스팅 기간 (최근 6개월)
-    end_date = datetime.now().strftime('%Y%m%d')
-    start_date = (datetime.now() - timedelta(days=180)).strftime('%Y%m%d')
+    # 백테스팅 기간 (2024년 전체 - 실제 과거 데이터)
+    start_date = "20240101"
+    end_date = "20241231"
+
+    print(f"\n⚠️ 백테스팅 기간: {start_date} ~ {end_date}")
+    print(f"⚠️ 테스트 종목: 10개 (전체 {len(stocks)}개 중)\n")
 
     # 실행
     backtester.run(stocks, start_date, end_date)
