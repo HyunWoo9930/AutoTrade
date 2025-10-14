@@ -343,6 +343,28 @@ class Backtester:
 
         # 매매 통계
         trades = [t for t in self.trade_history if t['action'] == 'SELL']
+
+        if len(trades) == 0:
+            print("❌ 매도 거래가 없습니다. (모든 포지션 보유 중)")
+            print(f"\n💼 **현재 포지션**")
+            print(f"  보유 종목: {len(self.positions)}개")
+            for code, pos in self.positions.items():
+                print(f"    - {pos['name']}: {pos['qty']}주 @ {pos['avg_price']:,.0f}원")
+
+            # 자산 평가
+            portfolio_value = self._get_portfolio_value()
+            total = self.cash + portfolio_value
+            unrealized_return = (total - self.initial_cash) / self.initial_cash * 100
+
+            print(f"\n💰 **자산 평가**")
+            print(f"  현금: {self.cash:,}원")
+            print(f"  포지션: {portfolio_value:,.0f}원")
+            print(f"  총 자산: {total:,.0f}원")
+            print(f"  미실현 수익률: {unrealized_return:+.2f}%")
+
+            self.save_results()
+            return
+
         wins = [t for t in trades if t['profit_rate'] > 0]
         losses = [t for t in trades if t['profit_rate'] <= 0]
 
@@ -393,10 +415,14 @@ class Backtester:
 
         # 보유 기간
         hold_days = [t['hold_days'] for t in trades]
-        print(f"\n⏱️ **보유 기간**")
-        print(f"  평균: {np.mean(hold_days):.1f}일")
-        print(f"  최소: {min(hold_days)}일")
-        print(f"  최대: {max(hold_days)}일")
+        if len(hold_days) > 0:
+            print(f"\n⏱️ **보유 기간**")
+            print(f"  평균: {np.mean(hold_days):.1f}일")
+            print(f"  최소: {min(hold_days)}일")
+            print(f"  최대: {max(hold_days)}일")
+        else:
+            print(f"\n⏱️ **보유 기간**")
+            print(f"  매도 거래 없음 (아직 보유 중)")
 
         # 상세 매매 기록 저장
         self.save_results()
