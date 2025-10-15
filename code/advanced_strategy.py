@@ -366,9 +366,12 @@ class AdvancedTradingStrategy:
         # 변동성 계산 (최근 20일 표준편차) - 먼저 계산
         volatility = df['close'].tail(20).std() / df['close'].tail(20).mean() * 100
 
-        # ✅ 장중 현재가 기반 변화율 추가 (에러 처리 강화)
+        # ✅ 장중 현재가 기반 변화율 추가 (None 체크 강화)
         try:
-            current_price = int(self.api.get_current_price(stock_code))
+            current_price_str = self.api.get_current_price(stock_code)
+            if current_price_str is None:
+                raise ValueError("현재가 조회 결과 None")
+            current_price = int(current_price_str)
             # 전날 종가 대비 오늘 현재가 변화율
             intraday_change = (current_price - latest['close']) / latest['close'] * 100
         except Exception as e:
@@ -429,7 +432,11 @@ class AdvancedTradingStrategy:
             df['high'], df['low'], df['close'], window=14
         ).iloc[-1]
 
-        current_price = int(self.api.get_current_price(stock_code))
+        current_price_str = self.api.get_current_price(stock_code)
+        if current_price_str is None:
+            print("❌ 현재가 조회 실패 - 기본 손절가 사용")
+            return 0, 0, 0, 0.05, 12.0, 20.0
+        current_price = int(current_price_str)
 
         # ATR을 퍼센트로 변환
         atr_pct = (atr / current_price) * 100
@@ -507,8 +514,12 @@ class AdvancedTradingStrategy:
                 print(f"  {detail}")
             print(f"\n신호 점수: {signals}/5")
 
-            # 현재가 조회
-            current_price = int(self.api.get_current_price(stock_code))
+            # 현재가 조회 (None 체크)
+            current_price_str = self.api.get_current_price(stock_code)
+            if current_price_str is None:
+                print("❌ 현재가 조회 실패 - 종목 스킵")
+                return
+            current_price = int(current_price_str)
 
             # 🔔 강한 신호면 디스코드 알림
             if signals >= 4:
@@ -723,7 +734,11 @@ class AdvancedTradingStrategy:
         """포지션 관리 (익절/손절/추가매수)"""
         print(f"\n📊 포지션 관리 중...")
 
-        current_price = int(self.api.get_current_price(stock_code))
+        current_price_str = self.api.get_current_price(stock_code)
+        if current_price_str is None:
+            print("❌ 현재가 조회 실패 - 포지션 관리 스킵")
+            return
+        current_price = int(current_price_str)
 
         # 🚨 급락장 감지 시 차등 청산
         if regime == "crash":

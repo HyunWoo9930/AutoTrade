@@ -30,8 +30,12 @@ class SectorRotation:
 
             for stock_code, stock_name in stocks[:3]:  # 섹터 대표 3종목만
                 try:
-                    # 현재가 조회
-                    current_price = int(self.api.get_current_price(stock_code))
+                    # 현재가 조회 (None 체크)
+                    current_price_str = self.api.get_current_price(stock_code)
+                    if current_price_str is None:
+                        print(f"  ⚠️ {stock_name} 현재가 조회 실패 - 스킵")
+                        continue
+                    current_price = int(current_price_str)
 
                     # 일봉 데이터 조회
                     df = self._get_ohlcv(stock_code, count=20)
