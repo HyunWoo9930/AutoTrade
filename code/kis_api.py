@@ -19,22 +19,53 @@ class KISApi:
         self.last_request_time = time.time()
         
     def get_access_token(self):
-        """접근 토큰 발급"""
+        """접근 토큰 발급 (파일 공유 방식)"""
+        import os
+
+        token_file = '/tmp/kis_token.json'
+
+        # 1. 기존 토큰 파일 확인 (다른 프로세스가 발급한 토큰)
+        if os.path.exists(token_file):
+            try:
+                with open(token_file, 'r') as f:
+                    token_data = json.load(f)
+
+                # 토큰 유효 시간 체크 (발급 후 24시간)
+                issued_at = token_data.get('issued_at', 0)
+                if time.time() - issued_at < 86400:  # 24시간 = 86400초
+                    self.access_token = token_data['token']
+                    print("✅ 기존 토큰 재사용!")
+                    return self.access_token
+            except Exception as e:
+                print(f"⚠️ 토큰 파일 읽기 실패: {e}")
+
+        # 2. 새 토큰 발급
         url = f"{self.config.BASE_URL}/oauth2/tokenP"
-        
+
         headers = {"content-type": "application/json"}
         body = {
             "grant_type": "client_credentials",
             "appkey": self.config.APP_KEY,
             "appsecret": self.config.APP_SECRET
         }
-        
+
         self._rate_limit()  # 속도 제한
         res = requests.post(url, headers=headers, data=json.dumps(body))
-        
+
         if res.status_code == 200:
             self.access_token = res.json()["access_token"]
-            print("✅ 토큰 발급 성공!")
+
+            # 3. 토큰 파일로 저장 (다른 프로세스와 공유)
+            try:
+                with open(token_file, 'w') as f:
+                    json.dump({
+                        'token': self.access_token,
+                        'issued_at': time.time()
+                    }, f)
+                print("✅ 토큰 발급 성공!")
+            except Exception as e:
+                print(f"⚠️ 토큰 파일 저장 실패: {e}")
+
             return self.access_token
         else:
             print("❌ 토큰 발급 실패:", res.text)
