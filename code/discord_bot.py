@@ -383,15 +383,20 @@ async def bot_status(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
 
     try:
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+
         embed = discord.Embed(
             title="🤖 봇 상태",
             color=0x2ecc71,
-            timestamp=datetime.now()
+            timestamp=now
         )
 
         # 봇 정보
         embed.add_field(name="🟢 상태", value="실행 중", inline=True)
-        embed.add_field(name="⏰ 가동 시간", value=str(datetime.now() - client.user.created_at).split('.')[0], inline=True)
+        uptime = now - client.user.created_at
+        uptime_str = str(uptime).split('.')[0]
+        embed.add_field(name="⏰ 봇 생성일", value=uptime_str, inline=True)
         embed.add_field(name="📊 서버 수", value=f"{len(client.guilds)}개", inline=True)
 
         # API 상태
