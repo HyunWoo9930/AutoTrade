@@ -9,7 +9,7 @@ class KISApi:
         self.config = Config()
         self.access_token = None
         self.last_request_time = 0
-        self.min_interval = 0.5  # 최소 0.2초 간격 (초당 5회)
+        self.min_interval = 0.6  # 최소 0.6초 간격 (초당 1.6회) - 안전하게 조정
         
     def _rate_limit(self):
         """API 호출 속도 제한"""
