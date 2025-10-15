@@ -296,15 +296,20 @@ class DiscordNotifier:
         emoji = regime_emoji.get(regime, "❓")
         color = regime_color.get(regime, 0x95a5a6)
 
+        # None 값을 안전하게 처리
+        adx = regime_info.get('adx', 0) or 0
+        price_change_5d = regime_info.get('price_change_5d', 0) or 0
+        volatility = regime_info.get('volatility', 0) or 0
+
         msg = f"""
 {emoji} **시장 상태: {regime.upper()}**
 
 📊 {stock_name} (`{code}`)
 
 **지표**
-  • ADX: {regime_info.get('adx', 0):.1f}
-  • 5일 변화율: {regime_info.get('price_change_5d', 0):.2f}%
-  • 변동성: {regime_info.get('volatility', 0):.2f}%
+  • ADX: {adx:.1f}
+  • 5일 변화율: {price_change_5d:.2f}%
+  • 변동성: {volatility:.2f}%
 
 ⏰ {datetime.now().strftime('%H:%M:%S')}
 """

@@ -497,13 +497,21 @@ class AdvancedTradingStrategy:
             regime, regime_info = self.detect_market_regime(stock_code)
             print(f"🌐 시장 상태: {regime.upper()}")
             if regime_info:
-                print(f"  ADX: {regime_info.get('adx', 0):.1f}")
-                print(f"  5일 변화율: {regime_info.get('price_change_5d', 0):.2f}%")
-                print(f"  장중 변화율: {regime_info.get('intraday_change', 0):.2f}%")  # 🆕
-                print(f"  변동성: {regime_info.get('volatility', 0):.2f}%\n")
+                adx = regime_info.get('adx', 0) or 0
+                price_change_5d = regime_info.get('price_change_5d', 0) or 0
+                intraday_change = regime_info.get('intraday_change')
+                volatility = regime_info.get('volatility', 0) or 0
 
-                # 급락장이나 횡보장 감지 시 디스코드 알림
-                if regime in ["crash", "sideways"]:
+                print(f"  ADX: {adx:.1f}")
+                print(f"  5일 변화율: {price_change_5d:.2f}%")
+                if intraday_change is not None:
+                    print(f"  장중 변화율: {intraday_change:.2f}%")
+                else:
+                    print(f"  장중 변화율: N/A (현재가 조회 실패)")
+                print(f"  변동성: {volatility:.2f}%\n")
+
+                # 🔇 급락장만 알림 (횡보장 알림 제거 - 너무 많음)
+                if regime == "crash":
                     self.notifier.notify_market_regime(stock_name, stock_code, regime, regime_info)
 
             # 1단계: 매수 신호 확인
@@ -580,14 +588,14 @@ class AdvancedTradingStrategy:
                         print(f"\n⚠️ 섹터 한도 초과 ({stock_sector}: {sector_exposure*100:.1f}% / 30%) - 매수 보류")
                         return
 
-                    # 🆕 섹터 로테이션 - 약세 섹터 회피
-                    if self.sector_rotation is None:
-                        from sector_rotation import SectorRotation
-                        self.sector_rotation = SectorRotation()
-
-                    if self.sector_rotation.should_avoid_sector(stock_sector):
-                        print(f"\n⚠️ 약세 섹터 감지 ({stock_sector}) - 매수 회피 (섹터 로테이션)")
-                        return
+                    # 🆕 섹터 로테이션 - 약세 섹터 회피 (임시 비활성화 - 디버깅용)
+                    # if self.sector_rotation is None:
+                    #     from sector_rotation import SectorRotation
+                    #     self.sector_rotation = SectorRotation()
+                    #
+                    # if self.sector_rotation.should_avoid_sector(stock_sector):
+                    #     print(f"\n⚠️ 약세 섹터 감지 ({stock_sector}) - 매수 회피 (섹터 로테이션)")
+                    #     return
 
                 # ✅ 당일 재진입 규칙 개선 (손절만 방지, 익절은 허용)
                 if stock_code in self.sold_today:
@@ -604,22 +612,22 @@ class AdvancedTradingStrategy:
                     else:
                         print(f"\n⚠️ 당일 익절 종목 - 재진입 허용 (익절률: {sold_info['profit_rate']:.2f}%)")
 
-                # 📊 횡보장: 신호 3개 이상 매수 (포지션 크기 50% 축소)
+                # 📊 횡보장: 신호 2개 이상 매수 (포지션 크기 50% 축소) - 완화
                 elif regime == "sideways":
-                    if signals >= 3:
+                    if signals >= 2:
                         print(f"\n📊 횡보장 - 신호 확인! ({signals}/5)")
                         print(f"  ⚠️ 횡보장이므로 포지션 크기 50% 축소")
                         self._execute_buy(stock_code, stock_name, cash, signals, regime)
                     else:
-                        print(f"\n❌ 횡보장 - 신호 부족 ({signals}/5, 필요: 3+) - 대기")
+                        print(f"\n❌ 횡보장 - 신호 부족 ({signals}/5, 필요: 2+) - 대기")
 
-                # 📈 추세장: 신호 3개 이상 매수
+                # 📈 추세장: 신호 2개 이상 매수 - 완화
                 elif regime == "trending":
-                    if signals >= 3:
+                    if signals >= 2:
                         print(f"\n📈 추세장 - 신호 확인! ({signals}/5)")
                         self._execute_buy(stock_code, stock_name, cash, signals, regime)
                     else:
-                        print(f"\n❌ 매수 신호 부족 ({signals}/5, 필요: 3+) - 대기")
+                        print(f"\n❌ 매수 신호 부족 ({signals}/5, 필요: 2+) - 대기")
 
                 # ❓ 알 수 없음: 보수적 (4개 이상만)
                 else:
