@@ -40,11 +40,11 @@ if balance and 'output1' in balance:
                 'name': stock.get('prdt_name', 'N/A'),
                 'code': stock.get('pdno', ''),
                 'qty': qty,
-                'avg_price': int(stock.get('pchs_avg_pric', 0)),
-                'current_price': int(stock.get('prpr', 0)),
+                'avg_price': int(float(stock.get('pchs_avg_pric', 0))),
+                'current_price': int(float(stock.get('prpr', 0))),
                 'profit_rate': float(stock.get('evlu_pfls_rt', 0))
             })
-            total_stock_value += int(stock.get('evlu_amt', 0))
+            total_stock_value += int(float(stock.get('evlu_amt', 0)))
 
 total_asset = cash + total_stock_value
 

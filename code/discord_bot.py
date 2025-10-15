@@ -86,13 +86,13 @@ async def balance(interaction: discord.Interaction):
             return
 
         # 예수금
-        cash = int(balance_data['output2'][0].get('dnca_tot_amt', 0))
+        cash = int(float(balance_data['output2'][0].get('dnca_tot_amt', 0)))
 
         # 총평가액
-        total_eval = int(balance_data['output2'][0].get('tot_evlu_amt', 0))
+        total_eval = int(float(balance_data['output2'][0].get('tot_evlu_amt', 0)))
 
         # 평가손익
-        total_profit = int(balance_data['output2'][0].get('evlu_pfls_smtl_amt', 0))
+        total_profit = int(float(balance_data['output2'][0].get('evlu_pfls_smtl_amt', 0)))
         profit_rate = float(balance_data['output2'][0].get('tot_evlu_pfls_rt', 0))
 
         # 보유 종목 수
@@ -152,10 +152,10 @@ async def positions(interaction: discord.Interaction):
             name = stock.get('prdt_name', 'N/A')
             code = stock.get('pdno', 'N/A')
             qty = int(stock.get('hldg_qty', 0))
-            avg_price = int(stock.get('pchs_avg_pric', 0))
-            current_price = int(stock.get('prpr', 0))
+            avg_price = int(float(stock.get('pchs_avg_pric', 0)))
+            current_price = int(float(stock.get('prpr', 0)))
             profit_rate = float(stock.get('evlu_pfls_rt', 0))
-            profit = int(stock.get('evlu_pfls_amt', 0))
+            profit = int(float(stock.get('evlu_pfls_amt', 0)))
 
             emoji = "🟢" if profit_rate >= 0 else "🔴"
 
