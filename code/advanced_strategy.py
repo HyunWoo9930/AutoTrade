@@ -363,6 +363,9 @@ class AdvancedTradingStrategy:
         # 최근 5일 가격 변화율 (일봉 종가 기준)
         price_change_5d = (latest['close'] - prev_5['close'].iloc[0]) / prev_5['close'].iloc[0] * 100
 
+        # 변동성 계산 (최근 20일 표준편차) - 먼저 계산
+        volatility = df['close'].tail(20).std() / df['close'].tail(20).mean() * 100
+
         # ✅ 장중 현재가 기반 변화율 추가 (에러 처리 강화)
         try:
             current_price = int(self.api.get_current_price(stock_code))
@@ -378,9 +381,6 @@ class AdvancedTradingStrategy:
                 'intraday_change': None,
                 'volatility': volatility
             }
-
-        # 변동성 계산 (최근 20일 표준편차)
-        volatility = df['close'].tail(20).std() / df['close'].tail(20).mean() * 100
 
         regime_info = {
             'adx': latest['ADX'],
