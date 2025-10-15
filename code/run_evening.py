@@ -21,8 +21,16 @@ cash = 0
 holdings_list = []
 total_stock_value = 0
 
+print(f"🔍 잔고 조회 결과: {balance is not None}")
+if balance:
+    print(f"   - output1 존재: {'output1' in balance}")
+    print(f"   - output2 존재: {'output2' in balance}")
+else:
+    print(f"   ❌ 잔고 조회 실패!")
+
 if balance and 'output2' in balance:
     cash = int(balance['output2'][0]['dnca_tot_amt'])
+    print(f"   ✅ 예수금 조회 성공: {cash:,}원")
 
 if balance and 'output1' in balance:
     for stock in balance['output1']:
