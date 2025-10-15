@@ -20,6 +20,7 @@ balance = api.get_balance()
 cash = 0
 holdings_list = []
 total_stock_value = 0
+total_asset = 0
 
 print(f"🔍 잔고 조회 결과: {balance is not None}")
 if balance:
@@ -29,8 +30,13 @@ else:
     print(f"   ❌ 잔고 조회 실패!")
 
 if balance and 'output2' in balance:
-    cash = int(balance['output2'][0]['dnca_tot_amt'])
-    print(f"   ✅ 예수금 조회 성공: {cash:,}원")
+    # ✅ API에서 직접 계산된 총평가액 사용 (Discord Bot과 동일)
+    cash = int(float(balance['output2'][0].get('dnca_tot_amt', 0)))
+    total_asset = int(float(balance['output2'][0].get('tot_evlu_amt', 0)))
+    total_stock_value = total_asset - cash
+    print(f"   ✅ 예수금: {cash:,}원")
+    print(f"   ✅ 총평가액: {total_asset:,}원")
+    print(f"   ✅ 주식평가액: {total_stock_value:,}원")
 
 if balance and 'output1' in balance:
     for stock in balance['output1']:
@@ -44,9 +50,6 @@ if balance and 'output1' in balance:
                 'current_price': int(float(stock.get('prpr', 0))),
                 'profit_rate': float(stock.get('evlu_pfls_rt', 0))
             })
-            total_stock_value += int(float(stock.get('evlu_amt', 0)))
-
-total_asset = cash + total_stock_value
 
 print(f"💰 예수금: {cash:,}원")
 print(f"📊 보유 종목: {len(holdings_list)}개")
