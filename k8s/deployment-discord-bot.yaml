@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discord-bot
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discord-bot
+  template:
+    metadata:
+      labels:
+        app: discord-bot
+    spec:
+      restartPolicy: Always
+      containers:
+      - name: discord-bot
+        image: hyunwoo12/stock_trading:latest
+        imagePullPolicy: Always
+        command: ["python", "/app/code/discord_bot.py"]
+        envFrom:
+        - secretRef:
+            name: stock-trading-secret
+        volumeMounts:
+        - name: watchlist
+          mountPath: /app/watchlist.py
+          subPath: watchlist.py
+        - name: journal
+          mountPath: /app/data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: watchlist
+        configMap:
+          name: stock-trading-config
+      - name: journal
+        persistentVolumeClaim:
+          claimName: trading-journal-pvc
