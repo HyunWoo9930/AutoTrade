@@ -115,8 +115,12 @@ jobs:
             sudo kubectl apply -f cronjob-morning.yaml
             sudo kubectl apply -f cronjob-evening.yaml
 
+            # Discord Bot Deployment 업데이트
+            sudo kubectl apply -f deployment-discord-bot.yaml
+
             # 배포 완료 확인
             sudo kubectl get cronjobs
+            sudo kubectl get deployments
 
             echo "✅ Deployment completed successfully!"
           EOF
@@ -133,8 +137,11 @@ jobs:
             echo -e "\n=== Recent Jobs ==="
             sudo kubectl get jobs --sort-by=.metadata.creationTimestamp | tail -5
 
+            echo -e "\n=== Deployments Status ==="
+            sudo kubectl get deployments
+
             echo -e "\n=== Pod Status ==="
-            sudo kubectl get pods --sort-by=.metadata.creationTimestamp | tail -5
+            sudo kubectl get pods --sort-by=.metadata.creationTimestamp | tail -10
           EOF
 
   notify:

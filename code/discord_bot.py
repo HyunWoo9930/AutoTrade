@@ -18,9 +18,9 @@ import sys
 # 프로젝트 경로 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from code.kis_api import KISApi
-from code.trading_journal import TradingJournal
-from code.advanced_strategy import AdvancedTradingStrategy
+from kis_api import KISApi
+from trading_journal import TradingJournal
+from advanced_strategy import AdvancedTradingStrategy
 
 load_dotenv()
 
