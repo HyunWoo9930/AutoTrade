@@ -22,6 +22,7 @@ class AdvancedTradingStrategy:
         self.max_holdings = 10  # ✅ 최대 보유 종목 수 (15→10 공격적 조정)
         self.sold_today = self._load_sold_today()  # ✅ 영구 저장에서 불러오기
         self.peak_profit = {}
+        self.sector_rotation = None  # 🆕 섹터 로테이션 (필요 시 초기화)
 
     def _load_sold_today(self):
         """당일 익절 종목 로드 (영구 저장)"""
@@ -162,13 +163,15 @@ class AdvancedTradingStrategy:
     def check_buy_signals(self, stock_code):
         """✅ 매수 신호 체크 (분봉 + 일봉 혼합, 가중치 개선)"""
         WEIGHTS = {
-            'MA': 2.0,      # 추세
-            'RSI': 1.0,     # 모멘텀
-            'MACD': 1.5,    # 추세 변화
-            'Volume': 2.0,  # ✅ 거래량 가중치 상향 (1.5 → 2.0)
-            'BB': 1.0       # 변동성
+            'MA': 2.0,         # 추세
+            'RSI': 1.0,        # 모멘텀
+            'MACD': 1.5,       # 추세 변화
+            'Volume': 2.0,     # 거래량
+            'BB': 1.0,         # 변동성
+            'MinuteMomentum': 1.5,  # 🆕 분봉 단기 모멘텀
+            'InstitutionalFlow': 1.0  # 🆕 기관 매매 흐름
         }
-        MAX_WEIGHTED_SCORE = sum(WEIGHTS.values())  # 7.5
+        MAX_WEIGHTED_SCORE = sum(WEIGHTS.values())  # 10.0
 
         weighted_score = 0.0
         signal_details = []
@@ -223,13 +226,18 @@ class AdvancedTradingStrategy:
         else:
             signal_details.append("❌ 이동평균 계산 불가")
 
-        # 2. RSI 확인 - 가중치 1.0
+        # 2. RSI 확인 - 가중치 1.0 (과매도 구간 우대)
         if pd.notna(latest['RSI']) and pd.notna(prev['RSI']):
-            if 30 < latest['RSI'] < 70 and latest['RSI'] > prev['RSI']:
-                weighted_score += WEIGHTS['RSI']
-                signal_details.append(f"✅ RSI 적정+상승 ({latest['RSI']:.1f}) [+{WEIGHTS['RSI']}]")
+            if 20 < latest['RSI'] < 40:
+                # 과매도 구간 - 강한 신호 (상승 불필요)
+                weighted_score += WEIGHTS['RSI'] * 1.3
+                signal_details.append(f"✅ RSI 과매도 ({latest['RSI']:.1f}) [+{WEIGHTS['RSI'] * 1.3:.1f}]")
+            elif 40 < latest['RSI'] < 70 and latest['RSI'] > prev['RSI']:
+                # 적정 범위 + 상승 - 보통 신호
+                weighted_score += WEIGHTS['RSI'] * 0.8
+                signal_details.append(f"✅ RSI 적정+상승 ({latest['RSI']:.1f}) [+{WEIGHTS['RSI'] * 0.8:.1f}]")
             else:
-                signal_details.append(f"❌ RSI 부적합 ({latest['RSI']:.1f}, 이전:{prev['RSI']:.1f})")
+                signal_details.append(f"❌ RSI 부적합 ({latest['RSI']:.1f})")
         else:
             signal_details.append("❌ RSI 계산 불가")
 
@@ -243,20 +251,24 @@ class AdvancedTradingStrategy:
         else:
             signal_details.append("❌ MACD 계산 불가")
 
-        # 4. ✅ 거래량 확인 - 기준 완화 (2배 → 1.3배)
+        # 4. ✅ 거래량 확인 - 기준 상향 (1.5배 기준)
         avg_volume = df['volume'].tail(20).mean()
         volume_ratio = latest['volume'] / avg_volume
 
-        if volume_ratio > 1.8:
-            # 1.8배 이상 - 강한 신호
+        if volume_ratio > 2.0:
+            # 2.0배 이상 - 매우 강한 신호
             weighted_score += WEIGHTS['Volume'] * 1.5
             signal_details.append(f"✅ 거래량 폭증 ({volume_ratio:.1f}배) [+{WEIGHTS['Volume'] * 1.5:.1f}]")
-        elif volume_ratio > 1.3:
-            # 1.3배 이상 - 보통 신호
+        elif volume_ratio > 1.5:
+            # 1.5배 이상 - 강한 신호
             weighted_score += WEIGHTS['Volume']
-            signal_details.append(f"✅ 거래량 증가 ({volume_ratio:.1f}배) [+{WEIGHTS['Volume']}]")
+            signal_details.append(f"✅ 거래량 급증 ({volume_ratio:.1f}배) [+{WEIGHTS['Volume']}]")
+        elif volume_ratio > 1.2:
+            # 1.2배 이상 - 약한 신호
+            weighted_score += WEIGHTS['Volume'] * 0.5
+            signal_details.append(f"⚪ 거래량 증가 ({volume_ratio:.1f}배) [+{WEIGHTS['Volume'] * 0.5:.1f}]")
         else:
-            signal_details.append(f"❌ 거래량 부족 ({volume_ratio:.1f}배, 필요: 1.3배+)")
+            signal_details.append(f"❌ 거래량 부족 ({volume_ratio:.1f}배, 필요: 1.5배+)")
 
         # 5. 볼린저 밴드 위치 - 가중치 1.0
         if pd.notna(latest['BB_lower']) and pd.notna(latest['BB_middle']) and pd.notna(latest['BB_upper']):
@@ -272,6 +284,53 @@ class AdvancedTradingStrategy:
                 signal_details.append(f"❌ 볼린저 상단 (과매수, 위치:{bb_position:.0f}%)")
         else:
             signal_details.append("❌ 볼린저밴드 계산 불가")
+
+        # 🆕 6. 분봉 단기 모멘텀 - 가중치 1.5
+        if minute_df is not None and len(minute_df) >= 10:
+            minute_df['MA5'] = minute_df['close'].rolling(5).mean()
+            minute_latest = minute_df.iloc[-1]
+            minute_prev = minute_df.iloc[-2]
+
+            # 분봉 5분 이평 상승 체크
+            if pd.notna(minute_latest['MA5']) and minute_latest['close'] > minute_latest['MA5']:
+                # 최근 10분봉 대비 현재가 상승률
+                price_change_10m = (minute_latest['close'] - minute_df['close'].iloc[-10]) / minute_df['close'].iloc[-10] * 100
+
+                if price_change_10m > 2.0:
+                    # 10분간 +2% 이상 급등
+                    weighted_score += WEIGHTS['MinuteMomentum'] * 1.5
+                    signal_details.append(f"✅ 분봉 급등 ({price_change_10m:.1f}%, 10분) [+{WEIGHTS['MinuteMomentum'] * 1.5:.1f}]")
+                elif price_change_10m > 1.0:
+                    # 10분간 +1% 이상 상승
+                    weighted_score += WEIGHTS['MinuteMomentum']
+                    signal_details.append(f"✅ 분봉 상승 ({price_change_10m:.1f}%, 10분) [+{WEIGHTS['MinuteMomentum']}]")
+                else:
+                    signal_details.append(f"⚪ 분봉 약상승 ({price_change_10m:.1f}%)")
+            else:
+                signal_details.append(f"❌ 분봉 약세 (MA5 이하)")
+        else:
+            signal_details.append("⚠️ 분봉 데이터 부족")
+
+        # 🆕 7. 기관 매매 흐름 (기관/외인 순매수) - 가중치 1.0
+        try:
+            investor_data = self.api.get_investor_trading(stock_code)
+            if investor_data:
+                # 기관 + 외인 순매수 합계
+                institution_net = investor_data.get('institution_net', 0)
+                foreign_net = investor_data.get('foreign_net', 0)
+                total_net = institution_net + foreign_net
+
+                if total_net > 0:
+                    weighted_score += WEIGHTS['InstitutionalFlow']
+                    signal_details.append(f"✅ 기관/외인 순매수 ({total_net:,}주) [+{WEIGHTS['InstitutionalFlow']}]")
+                elif total_net < 0:
+                    signal_details.append(f"❌ 기관/외인 순매도 ({total_net:,}주)")
+                else:
+                    signal_details.append(f"⚪ 기관/외인 중립")
+            else:
+                signal_details.append("⚠️ 기관 데이터 없음")
+        except Exception as e:
+            signal_details.append(f"⚠️ 기관 데이터 조회 실패")
 
         # ✅ 가중치 점수를 5점 만점으로 정규화 (내림 사용)
         normalized_score = (weighted_score / MAX_WEIGHTED_SCORE) * 5.0
@@ -510,13 +569,29 @@ class AdvancedTradingStrategy:
                         print(f"\n⚠️ 섹터 한도 초과 ({stock_sector}: {sector_exposure*100:.1f}% / 30%) - 매수 보류")
                         return
 
-                # ✅ 익절 후 당일 재진입 방지 (영구 저장 반영)
+                    # 🆕 섹터 로테이션 - 약세 섹터 회피
+                    if self.sector_rotation is None:
+                        from sector_rotation import SectorRotation
+                        self.sector_rotation = SectorRotation()
+
+                    if self.sector_rotation.should_avoid_sector(stock_sector):
+                        print(f"\n⚠️ 약세 섹터 감지 ({stock_sector}) - 매수 회피 (섹터 로테이션)")
+                        return
+
+                # ✅ 당일 재진입 규칙 개선 (손절만 방지, 익절은 허용)
                 if stock_code in self.sold_today:
                     sold_info = self.sold_today[stock_code]
-                    print(f"\n⚠️ 당일 익절 종목 - 재진입 방지")
-                    print(f"  익절 수익률: {sold_info['profit_rate']:.2f}%")
-                    print(f"  익절 사유: {sold_info.get('reason', 'N/A')}")
-                    return
+                    reason = sold_info.get('reason', '')
+
+                    # 손절/급락 매도는 재진입 금지
+                    if reason in ['stop_loss', 'crash', 'crash_protection']:
+                        print(f"\n🚫 당일 손절 종목 - 재진입 금지")
+                        print(f"  손절 수익률: {sold_info['profit_rate']:.2f}%")
+                        print(f"  손절 사유: {reason}")
+                        return
+                    # 익절 매도는 재진입 허용 (로그만 출력)
+                    else:
+                        print(f"\n⚠️ 당일 익절 종목 - 재진입 허용 (익절률: {sold_info['profit_rate']:.2f}%)")
 
                 # 📊 횡보장: 신호 3개 이상 매수 (포지션 크기 50% 축소)
                 elif regime == "sideways":
@@ -689,6 +764,13 @@ class AdvancedTradingStrategy:
                 # 피라미드 추적 삭제
                 if stock_code in self.pyramid_tracker:
                     del self.pyramid_tracker[stock_code]
+
+                # ✅ 급락장 청산 기록 (재진입 방지)
+                self.sold_today[stock_code] = {
+                    'profit_rate': profit_rate,
+                    'reason': 'crash_protection'
+                }
+                self._save_sold_today()
 
                 # 급락장 긴급 청산 전용 알림
                 self.notifier.notify_crash_protection(stock_name, stock_code, sell_qty, current_price, profit_rate)
@@ -867,6 +949,13 @@ class AdvancedTradingStrategy:
                 # 피라미드 추적 삭제
                 if stock_code in self.pyramid_tracker:
                     del self.pyramid_tracker[stock_code]
+
+                # ✅ 손절 기록 (재진입 방지)
+                self.sold_today[stock_code] = {
+                    'profit_rate': profit_rate,
+                    'reason': 'stop_loss'
+                }
+                self._save_sold_today()
 
                 self.notifier.notify_sell(stock_name, stock_code, quantity, current_price, profit_rate)
             else:

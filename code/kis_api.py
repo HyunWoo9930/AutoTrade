@@ -423,6 +423,53 @@ class KISApi:
 
         return None
 
+    def get_investor_trading(self, stock_code):
+        """기관/외인 매매 동향 조회
+
+        Args:
+            stock_code: 종목 코드
+
+        Returns:
+            dict: {
+                'institution_net': 기관 순매수량,
+                'foreign_net': 외인 순매수량,
+                'individual_net': 개인 순매수량
+            }
+        """
+        url = f"{self.config.BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-investor"
+
+        headers = {
+            "content-type": "application/json",
+            "authorization": f"Bearer {self.access_token}",
+            "appkey": self.config.APP_KEY,
+            "appsecret": self.config.APP_SECRET,
+            "tr_id": "FHKST01010900"
+        }
+
+        params = {
+            "fid_cond_mrkt_div_code": "J",
+            "fid_input_iscd": stock_code
+        }
+
+        self._rate_limit()
+        res = requests.get(url, headers=headers, params=params)
+
+        if res.status_code == 200:
+            result = res.json()
+
+            if 'output' in result and len(result['output']) > 0:
+                data = result['output'][0]  # 당일 데이터
+
+                return {
+                    'institution_net': int(data.get('stck_prpr', 0)),  # 기관 순매수
+                    'foreign_net': int(data.get('frgn_ntby_qty', 0)),  # 외인 순매수
+                    'individual_net': int(data.get('prsn_ntby_qty', 0))  # 개인 순매수
+                }
+        else:
+            print(f"❌ 기관 매매 조회 실패: {res.text}")
+
+        return None
+
     def get_minute_ohlcv(self, stock_code, time_end="153000"):
         """국내주식 분봉 데이터 조회 (당일만, 최대 30건)
 
