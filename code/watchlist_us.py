@@ -1,0 +1,97 @@
+# watchlist_us.py
+"""
+미국 주식 관심 종목 리스트
+KIS API에서는 나스닥은 'NAS', NYSE는 'NYSE', AMEX는 'AMS' 거래소 코드 사용
+"""
+
+# 섹터별 미국 주식 관심 종목
+WATCHLIST_US = {
+    "빅테크": [
+        ("AAPL", "Apple", "NAS"),
+        ("MSFT", "Microsoft", "NAS"),
+        ("GOOGL", "Alphabet", "NAS"),
+        ("AMZN", "Amazon", "NAS"),
+        ("META", "Meta Platforms", "NAS"),
+        ("NVDA", "NVIDIA", "NAS"),
+    ],
+
+    "반도체": [
+        ("TSM", "TSMC", "NYSE"),
+        ("AVGO", "Broadcom", "NAS"),
+        ("AMD", "AMD", "NAS"),
+        ("QCOM", "Qualcomm", "NAS"),
+        ("INTC", "Intel", "NAS"),
+    ],
+
+    "전기차": [
+        ("TSLA", "Tesla", "NAS"),
+        ("RIVN", "Rivian", "NAS"),
+        ("LCID", "Lucid", "NAS"),
+    ],
+
+    "금융": [
+        ("JPM", "JPMorgan Chase", "NYSE"),
+        ("BAC", "Bank of America", "NYSE"),
+        ("WFC", "Wells Fargo", "NYSE"),
+        ("GS", "Goldman Sachs", "NYSE"),
+    ],
+
+    "헬스케어": [
+        ("JNJ", "Johnson & Johnson", "NYSE"),
+        ("UNH", "UnitedHealth", "NYSE"),
+        ("PFE", "Pfizer", "NYSE"),
+        ("ABBV", "AbbVie", "NYSE"),
+    ],
+
+    "AI/클라우드": [
+        ("CRM", "Salesforce", "NYSE"),
+        ("ORCL", "Oracle", "NYSE"),
+        ("PLTR", "Palantir", "NYSE"),
+        ("SNOW", "Snowflake", "NYSE"),
+    ],
+
+    "소비재": [
+        ("KO", "Coca-Cola", "NYSE"),
+        ("PEP", "PepsiCo", "NAS"),
+        ("NKE", "Nike", "NYSE"),
+        ("SBUX", "Starbucks", "NAS"),
+    ],
+
+    "ETF": [
+        ("SPY", "S&P 500 ETF", "NYSE"),
+        ("QQQ", "NASDAQ-100 ETF", "NAS"),
+        ("DIA", "Dow Jones ETF", "NYSE"),
+    ],
+}
+
+
+def get_all_us_stocks():
+    """모든 미국 주식을 하나의 리스트로 반환"""
+    all_stocks = []
+    for sector, stocks in WATCHLIST_US.items():
+        all_stocks.extend(stocks)
+    return all_stocks
+
+
+def get_us_stocks_by_sector(sector):
+    """특정 섹터의 미국 주식만 반환"""
+    return WATCHLIST_US.get(sector, [])
+
+
+def print_us_watchlist():
+    """미국 주식 관심 종목 출력"""
+    print("\n" + "=" * 60)
+    print("🇺🇸 미국 주식 관심 종목 리스트")
+    print("=" * 60)
+
+    for sector, stocks in WATCHLIST_US.items():
+        print(f"\n🏷️  {sector} ({len(stocks)}개)")
+        for ticker, name, exchange in stocks:
+            print(f"   - {name} ({ticker}) [{exchange}]")
+
+    total = sum(len(stocks) for stocks in WATCHLIST_US.values())
+    print(f"\n📊 총 {total}개 종목")
+
+
+if __name__ == "__main__":
+    print_us_watchlist()

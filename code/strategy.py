@@ -1,6 +1,6 @@
 # strategy.py
 from kis_api import KISApi
-from code.discord.discord_notifier import DiscordNotifier
+from discord.discord_notifier import DiscordNotifier
 
 
 class TradingStrategy:

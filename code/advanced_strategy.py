@@ -243,20 +243,20 @@ class AdvancedTradingStrategy:
         else:
             signal_details.append("❌ MACD 계산 불가")
 
-        # 4. ✅ 거래량 확인 - 기준 상향 (1.2배 → 2배)
+        # 4. ✅ 거래량 확인 - 기준 완화 (2배 → 1.3배)
         avg_volume = df['volume'].tail(20).mean()
         volume_ratio = latest['volume'] / avg_volume
 
-        if volume_ratio > 2.0:
-            # 2배 이상 - 강한 신호
+        if volume_ratio > 1.8:
+            # 1.8배 이상 - 강한 신호
             weighted_score += WEIGHTS['Volume'] * 1.5
             signal_details.append(f"✅ 거래량 폭증 ({volume_ratio:.1f}배) [+{WEIGHTS['Volume'] * 1.5:.1f}]")
-        elif volume_ratio > 1.5:
-            # 1.5배 이상 - 보통 신호
+        elif volume_ratio > 1.3:
+            # 1.3배 이상 - 보통 신호
             weighted_score += WEIGHTS['Volume']
-            signal_details.append(f"✅ 거래량 급증 ({volume_ratio:.1f}배) [+{WEIGHTS['Volume']}]")
+            signal_details.append(f"✅ 거래량 증가 ({volume_ratio:.1f}배) [+{WEIGHTS['Volume']}]")
         else:
-            signal_details.append(f"❌ 거래량 부족 ({volume_ratio:.1f}배, 필요: 1.5배+)")
+            signal_details.append(f"❌ 거래량 부족 ({volume_ratio:.1f}배, 필요: 1.3배+)")
 
         # 5. 볼린저 밴드 위치 - 가중치 1.0
         if pd.notna(latest['BB_lower']) and pd.notna(latest['BB_middle']) and pd.notna(latest['BB_upper']):
@@ -518,22 +518,22 @@ class AdvancedTradingStrategy:
                     print(f"  익절 사유: {sold_info.get('reason', 'N/A')}")
                     return
 
-                # 📊 횡보장: 신호 2개 이상 매수 (공격적 설정, 포지션 크기 50% 축소)
+                # 📊 횡보장: 신호 3개 이상 매수 (포지션 크기 50% 축소)
                 elif regime == "sideways":
-                    if signals >= 2:
-                        print(f"\n📊 횡보장 - 신호 확인! ({signals}/5) [공격적 설정]")
+                    if signals >= 3:
+                        print(f"\n📊 횡보장 - 신호 확인! ({signals}/5)")
                         print(f"  ⚠️ 횡보장이므로 포지션 크기 50% 축소")
                         self._execute_buy(stock_code, stock_name, cash, signals, regime)
                     else:
-                        print(f"\n❌ 횡보장 - 신호 부족 ({signals}/5, 필요: 2+) - 대기")
+                        print(f"\n❌ 횡보장 - 신호 부족 ({signals}/5, 필요: 3+) - 대기")
 
-                # 📈 추세장: 신호 2개 이상 매수 (공격적 설정)
+                # 📈 추세장: 신호 3개 이상 매수
                 elif regime == "trending":
-                    if signals >= 2:
-                        print(f"\n📈 추세장 - 신호 확인! ({signals}/5) [공격적 설정]")
+                    if signals >= 3:
+                        print(f"\n📈 추세장 - 신호 확인! ({signals}/5)")
                         self._execute_buy(stock_code, stock_name, cash, signals, regime)
                     else:
-                        print(f"\n❌ 매수 신호 부족 ({signals}/5, 필요: 2+) - 대기")
+                        print(f"\n❌ 매수 신호 부족 ({signals}/5, 필요: 3+) - 대기")
 
                 # ❓ 알 수 없음: 보수적 (4개 이상만)
                 else:
@@ -562,12 +562,16 @@ class AdvancedTradingStrategy:
         """✅ 매수 실행 (분할 매수 + ATR 동적 목표가)"""
         print(f"\n🎯 강한 매수 신호! ({signals}/5)")
 
-        # ✅ 실제 총평가액 사용
+        # ✅ 실제 총평가액 사용 (하드코딩 제거)
         balance = self.api.get_balance()
         if balance and 'output2' in balance:
-            total_balance = int(balance['output2'][0].get('tot_evlu_amt', cash + 30000000))
+            total_balance = int(balance['output2'][0].get('tot_evlu_amt', 0))
+            if total_balance == 0:
+                print("❌ 계좌 잔고 조회 실패 - 매수 중단")
+                return
         else:
-            total_balance = cash + 30000000
+            print("❌ 계좌 정보 조회 실패 - 매수 중단")
+            return
 
         # ✅ ATR 동적 목표가 포함
         shares, current_price, atr, stop_loss_pct, target_1, target_2 = self.calculate_position_size(
@@ -731,18 +735,18 @@ class AdvancedTradingStrategy:
                         self.notifier.notify_sell_failed(stock_name, stock_code, "추세 반전 익절 실패")
                     return
 
-        # ✅ 트레일링 스탑 - 발동 시점 조정 (+12% → +15%, 분할 익절 후)
+        # ✅ 트레일링 스탑 - 발동 기준 하향 (+15% → +10%)
         # 최고 수익률 갱신
         if stock_code not in self.peak_profit or profit_rate > self.peak_profit[stock_code]:
             self.peak_profit[stock_code] = profit_rate
             print(f"  📊 최고 수익률 갱신: {profit_rate:.2f}%")
 
-        # ✅ 트레일링 스탑 발동: +15% 도달 후 최고점 대비 -4% 하락
-        if self.peak_profit.get(stock_code, 0) >= 15.0:
+        # ✅ 트레일링 스탑 발동: +10% 도달 후 최고점 대비 -3% 하락
+        if self.peak_profit.get(stock_code, 0) >= 10.0:
             peak = self.peak_profit[stock_code]
             drawdown_from_peak = peak - profit_rate
 
-            if drawdown_from_peak >= 4.0:  # ✅ -3% → -4% (더 여유 있게)
+            if drawdown_from_peak >= 3.0:
                 print(f"\n📉 트레일링 스탑 발동!")
                 print(f"  최고 수익률: {peak:.2f}%")
                 print(f"  현재 수익률: {profit_rate:.2f}%")
