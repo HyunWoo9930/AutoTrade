@@ -19,8 +19,38 @@ class OverseasTradingStrategy:
         self.current_buy_id = {}
         self.pyramid_tracker = {}
         self.max_holdings = 15  # 공격적 설정 (해외주식)
-        self.sold_today = {}
+        self.sold_today = self._load_sold_today()  # ✅ 영구 저장
         self.peak_profit = {}
+
+    def _load_sold_today(self):
+        """당일 익절 종목 로드 (영구 저장)"""
+        import os, json
+        from datetime import datetime
+        sold_file = '/app/data/sold_today_overseas.json'
+        try:
+            if os.path.exists(sold_file):
+                with open(sold_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    today = datetime.now().strftime('%Y-%m-%d')
+                    if data.get('date') == today:
+                        return data.get('stocks', {})
+        except Exception as e:
+            print(f"⚠️ sold_today 로드 실패: {e}")
+        return {}
+
+    def _save_sold_today(self):
+        """당일 익절 종목 저장 (영구 저장)"""
+        import os, json
+        from datetime import datetime
+        sold_file = '/app/data/sold_today_overseas.json'
+        try:
+            os.makedirs(os.path.dirname(sold_file), exist_ok=True)
+            today = datetime.now().strftime('%Y-%m-%d')
+            data = {'date': today, 'stocks': self.sold_today}
+            with open(sold_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"⚠️ sold_today 저장 실패: {e}")
 
     def _convert_exchange_code(self, exchange):
         """거래소 코드 변환 (NAS→NASD, NYSE→NYSE, AMS→AMEX)"""
@@ -245,10 +275,10 @@ class OverseasTradingStrategy:
         return "unknown", regime_info
 
     def calculate_position_size(self, ticker, exchange, account_balance, regime="unknown"):
-        """포지션 사이징 (변동성 기반)"""
+        """✅ 포지션 사이징 (변동성 기반 + ATR 동적 목표가)"""
         df = self.get_ohlcv(ticker, exchange, count=30)
         if df is None or len(df) < 14:
-            return 0, 0, 0, 0.05
+            return 0, 0, 0, 0.05, 12.0, 20.0  # ✅ 기본 목표가 추가
 
         atr = ta.volatility.average_true_range(
             df['high'], df['low'], df['close'], window=14
@@ -269,6 +299,17 @@ class OverseasTradingStrategy:
 
         adjusted_stop_loss_pct = max(0.03, min(adjusted_stop_loss_pct, 0.08))
 
+        # ✅ ATR 기반 동적 목표가 설정
+        if atr_pct < 2.0:
+            profit_target_1 = 10.0  # 낮은 변동성: 보수적
+            profit_target_2 = 18.0
+        elif atr_pct > 5.0:
+            profit_target_1 = 15.0  # 높은 변동성: 공격적
+            profit_target_2 = 25.0
+        else:
+            profit_target_1 = 12.0  # 보통 변동성: 기본
+            profit_target_2 = 20.0
+
         # 수량 계산 (2% 리스크)
         risk_amount = account_balance * 0.02
         stop_loss_amount = current_price * adjusted_stop_loss_pct
@@ -285,7 +326,7 @@ class OverseasTradingStrategy:
 
         shares = min(shares, max_shares)
 
-        return shares, current_price, atr, adjusted_stop_loss_pct
+        return shares, current_price, atr, adjusted_stop_loss_pct, profit_target_1, profit_target_2
 
     def execute_strategy(self, ticker, stock_name, exchange):
         """전략 실행 (해외주식)"""
@@ -418,7 +459,7 @@ class OverseasTradingStrategy:
 
         # USD 환산 (간단히 $10,000 초기자본 가정)
         total_balance_usd = cash_usd + 10000
-        shares, current_price, atr, stop_loss_pct = self.calculate_position_size(
+        shares, current_price, atr, stop_loss_pct, target_1, target_2 = self.calculate_position_size(
             ticker, exchange, total_balance_usd * 1300, regime  # KRW 환산
         )
 
@@ -432,7 +473,12 @@ class OverseasTradingStrategy:
         if first_buy > 0:
             exchange_trading = self._convert_exchange_code(exchange)
 
+            atr_pct = (atr / current_price) * 100
             print(f"\n💰 1차 매수: {first_buy}주 @ ${current_price:.2f}")
+            print(f"  ATR: ${atr:.2f} ({atr_pct:.2f}%)")
+            print(f"  손절: -{stop_loss_pct*100:.1f}%")
+            print(f"  ✅ 익절 목표: 1차 +{target_1:.0f}% (50%), 2차 +{target_2:.0f}% (100%)")
+
             result = self.api.buy_overseas_stock(ticker, first_buy, exchange_trading)
 
             if result:
@@ -444,6 +490,8 @@ class OverseasTradingStrategy:
                     'target_qty': shares,
                     'remaining_qty': shares - first_buy,
                     'stop_loss_pct': stop_loss_pct,
+                    'profit_target_1': target_1,  # ✅ 추가
+                    'profit_target_2': target_2,  # ✅ 추가
                     'exchange': exchange
                 }
 
@@ -483,18 +531,23 @@ class OverseasTradingStrategy:
                     self.api.sell_overseas_stock(ticker, quantity, exchange_trading)
                     return
 
-        # 트레일링 스탑
+        # ✅ 트레일링 스탑 - 발동 기준 하향 (+15% → +10%)
         if ticker not in self.peak_profit or profit_rate > self.peak_profit[ticker]:
             self.peak_profit[ticker] = profit_rate
+            print(f"  📊 최고 수익률 갱신: {profit_rate:.2f}%")
 
-        if self.peak_profit.get(ticker, 0) >= 15.0:
+        if self.peak_profit.get(ticker, 0) >= 10.0:  # ✅ 15.0 → 10.0
             peak = self.peak_profit[ticker]
             drawdown = peak - profit_rate
 
             if drawdown >= 3.0:
                 print(f"\n📉 트레일링 스탑! (최고 {peak:.2f}% → 현재 {profit_rate:.2f}%)")
                 self.api.sell_overseas_stock(ticker, quantity, exchange_trading)
-                self.sold_today[ticker] = {'profit_rate': profit_rate}
+                # ✅ 영구 저장 추가
+                self.sold_today[ticker] = {'profit_rate': profit_rate, 'reason': 'trailing_stop'}
+                self._save_sold_today()
+                if ticker in self.pyramid_tracker:
+                    del self.pyramid_tracker[ticker]
                 return
 
         # 피라미드 2차 매수
@@ -523,22 +576,42 @@ class OverseasTradingStrategy:
         if profit_rate <= stop_loss_threshold:
             print(f"\n🚨 손절! ({profit_rate:.2f}% <= {stop_loss_threshold:.2f}%)")
             self.api.sell_overseas_stock(ticker, quantity, exchange_trading)
+            # ✅ 영구 저장
+            self.sold_today[ticker] = {'profit_rate': profit_rate, 'reason': 'stop_loss'}
+            self._save_sold_today()
+            if ticker in self.pyramid_tracker:
+                del self.pyramid_tracker[ticker]
             return
 
-        # 1차 익절 (+10%, 50%)
-        elif profit_rate >= 10.0 and quantity > 1:
+        # ✅ ATR 기반 동적 익절 목표 사용
+        if ticker in self.pyramid_tracker:
+            target_1 = self.pyramid_tracker[ticker].get('profit_target_1', 12.0)
+            target_2 = self.pyramid_tracker[ticker].get('profit_target_2', 20.0)
+        else:
+            target_1, target_2 = 12.0, 20.0
+
+        # 1차 익절 (50% 매도)
+        if profit_rate >= target_1 and quantity > 1:
             sell_qty = int(quantity * 0.5)
-            print(f"\n🎯 1차 익절! (+10%) - {sell_qty}주 매도")
+            print(f"\n🎯 1차 익절! (+{target_1:.0f}%) - {sell_qty}주 매도")
             self.api.sell_overseas_stock(ticker, sell_qty, exchange_trading)
 
-        # 2차 익절 (+20%, 전량)
-        elif profit_rate >= 20.0:
-            print(f"\n🚀 2차 익절! (+20%) - 전량 매도")
+        # 2차 익절 (전량 매도)
+        elif profit_rate >= target_2:
+            print(f"\n🚀 2차 익절! (+{target_2:.0f}%) - 전량 매도")
             self.api.sell_overseas_stock(ticker, quantity, exchange_trading)
-            self.sold_today[ticker] = {'profit_rate': profit_rate}
+            # ✅ 영구 저장
+            self.sold_today[ticker] = {'profit_rate': profit_rate, 'reason': '2nd_profit_take'}
+            self._save_sold_today()
+            if ticker in self.pyramid_tracker:
+                del self.pyramid_tracker[ticker]
+            if ticker in self.peak_profit:
+                del self.peak_profit[ticker]
 
         else:
             print(f"\n⏳ 홀딩 중 (수익률: {profit_rate:.2f}%)")
+            print(f"  ✅ 목표: +{target_1:.0f}% (1차), +{target_2:.0f}% (2차)")
+            print(f"  손절: {stop_loss_threshold:.0f}%")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stock-trading-overseas
+  namespace: default
+spec:
+  # 화~토 00:30 (미국 장 시작 1시간 후, 한국 시간)
+  # 미국 정규장: 23:30~06:00 (KST)
+  schedule: "30 0 * * 2-6"
+  timeZone: "Asia/Seoul"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid  # 동시 실행 방지
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: overseas-trading
+            image: hyunwoo12/stock_trading:latest
+            imagePullPolicy: Always
+            command: ["python", "run_overseas.py"]
+            envFrom:
+            - secretRef:
+                name: stock-trading-secret
+            volumeMounts:
+            - name: watchlist-us
+              mountPath: /app/watchlist_us.py
+              subPath: watchlist_us.py
+            - name: journal
+              mountPath: /app/data
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "200m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+          volumes:
+          - name: watchlist-us
+            configMap:
+              name: stock-trading-config-us  # 별도 ConfigMap 필요
+          - name: journal
+            persistentVolumeClaim:
+              claimName: trading-journal-pvc
