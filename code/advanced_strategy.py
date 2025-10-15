@@ -386,14 +386,14 @@ class AdvancedTradingStrategy:
             }
 
         regime_info = {
-            'adx': latest['ADX'],
-            'atr': latest['ATR'],
+            'adx': latest['ADX'] if pd.notna(latest['ADX']) else 0.0,
+            'atr': latest['ATR'] if pd.notna(latest['ATR']) else 0.0,
             'price_change_5d': price_change_5d,
             'intraday_change': intraday_change,  # 🆕 장중 변화율
             'current_price': current_price,  # 🆕 현재가
             'volatility': volatility,
-            'ma5': latest['MA5'],
-            'ma20': latest['MA20']
+            'ma5': latest['MA5'] if pd.notna(latest['MA5']) else 0.0,
+            'ma20': latest['MA20'] if pd.notna(latest['MA20']) else 0.0
         }
 
         # 🚨 급락장 감지: 5일간 -10% 이상 하락 또는 (하락 + 고변동성)
