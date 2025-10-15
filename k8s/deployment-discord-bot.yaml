@@ -18,7 +18,7 @@ spec:
       - name: discord-bot
         image: hyunwoo12/stock_trading:latest
         imagePullPolicy: Always
-        command: ["python", "/app/code/discord_bot.py"]
+        command: ["python", "discord_bot.py"]
         envFrom:
         - secretRef:
             name: stock-trading-secret
