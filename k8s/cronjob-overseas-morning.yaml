@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stock-trading-overseas-morning
+  namespace: default
+spec:
+  # 화~토 23:20 (미국 장 시작 10분 전, 한국 시간)
+  schedule: "20 23 * * 1-5"
+  timeZone: "Asia/Seoul"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: overseas-morning
+            image: hyunwoo12/stock_trading:latest
+            imagePullPolicy: Always
+            command: ["python", "run_overseas_morning.py"]
+            envFrom:
+            - secretRef:
+                name: stock-trading-secret
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "300m"

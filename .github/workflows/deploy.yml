@@ -111,11 +111,15 @@ jobs:
             # PVC 생성 (없는 경우에만)
             sudo kubectl apply -f pvc.yaml
 
-            # CronJob 업데이트
+            # CronJob 업데이트 (국내주식)
             sudo kubectl apply -f cronjob-strategy.yaml
             sudo kubectl apply -f cronjob-morning.yaml
             sudo kubectl apply -f cronjob-evening.yaml
+
+            # CronJob 업데이트 (해외주식)
             sudo kubectl apply -f cronjob-overseas.yaml
+            sudo kubectl apply -f cronjob-overseas-morning.yaml
+            sudo kubectl apply -f cronjob-overseas-evening.yaml
 
             # Discord Bot Deployment 업데이트
             sudo kubectl apply -f deployment-discord-bot.yaml
