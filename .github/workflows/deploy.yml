@@ -124,6 +124,12 @@ jobs:
             # Discord Bot Deployment 업데이트
             sudo kubectl apply -f deployment-discord-bot.yaml
 
+            # Discord Bot 강제 재시작 (최신 이미지 적용)
+            sudo kubectl rollout restart deployment discord-bot
+
+            # 재시작 완료 대기
+            sudo kubectl rollout status deployment discord-bot --timeout=60s
+
             # 배포 완료 확인
             sudo kubectl get cronjobs
             sudo kubectl get deployments
