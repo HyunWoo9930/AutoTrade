@@ -629,12 +629,13 @@ class AdvancedTradingStrategy:
                     else:
                         print(f"\n❌ 매수 신호 부족 ({signals}/5, 필요: 2+) - 대기")
 
-                # ❓ 알 수 없음: 보수적 (4개 이상만)
+                # ❓ 알 수 없음: 보수적 (3개 이상으로 완화)
                 else:
-                    if signals >= 4:
+                    if signals >= 3:
+                        print(f"\n❓ 시장 상태 불명확 - 신호 확인! ({signals}/5)")
                         self._execute_buy(stock_code, stock_name, cash, signals, regime)
                     else:
-                        print(f"\n❌ 시장 상태 불명확 - 신호 부족 ({signals}/5, 필요: 4+) - 대기")
+                        print(f"\n❌ 시장 상태 불명확 - 신호 부족 ({signals}/5, 필요: 3+) - 대기")
 
         except Exception as e:
             # 🔔 에러 알림
