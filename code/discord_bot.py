@@ -85,15 +85,23 @@ async def balance(interaction: discord.Interaction):
             await interaction.followup.send("❌ 잔고 조회 실패")
             return
 
+        output2 = balance_data['output2'][0]
+
         # 예수금
-        cash = int(float(balance_data['output2'][0].get('dnca_tot_amt', 0)))
+        cash = int(float(output2.get('dnca_tot_amt', 0)))
 
-        # 총평가액
-        total_eval = int(float(balance_data['output2'][0].get('tot_evlu_amt', 0)))
+        # 총평가액 (예수금 + 주식평가액)
+        total_eval = int(float(output2.get('tot_evlu_amt', 0)))
 
-        # 평가손익
-        total_profit = int(float(balance_data['output2'][0].get('evlu_pfls_smtl_amt', 0)))
-        profit_rate = float(balance_data['output2'][0].get('tot_evlu_pfls_rt', 0))
+        # 주식평가액
+        stock_eval = int(float(output2.get('scts_evlu_amt', 0)))
+
+        # 평가손익 (현재 보유 주식의 평가손익)
+        total_profit = int(float(output2.get('evlu_pfls_smtl_amt', 0)))
+
+        # 수익률 계산 (평가손익 / 매입금액)
+        purchase_amt = int(float(output2.get('pchs_amt_smtl_amt', 0)))  # 매입금액
+        profit_rate = (total_profit / purchase_amt * 100) if purchase_amt > 0 else 0
 
         # 보유 종목 수
         holdings_count = 0
@@ -103,6 +111,7 @@ async def balance(interaction: discord.Interaction):
         # Embed 생성
         embed = discord.Embed(
             title="💰 계좌 잔고",
+            description=f"⚠️ 평가손익은 **현재 보유 중인 주식**의 손익입니다\n매도 시 실현손익은 `/매매내역`에서 확인하세요",
             color=0x2ecc71 if profit_rate >= 0 else 0xe74c3c,
             timestamp=datetime.now()
         )
@@ -111,12 +120,14 @@ async def balance(interaction: discord.Interaction):
         embed.add_field(name="📊 총평가액", value=f"{total_eval:,}원", inline=True)
         embed.add_field(name="📈 보유종목", value=f"{holdings_count}개", inline=True)
 
-        profit_emoji = "🟢" if profit_rate >= 0 else "🔴"
+        embed.add_field(name="💎 주식평가액", value=f"{stock_eval:,}원", inline=True)
+        profit_emoji = "🟢" if total_profit >= 0 else "🔴"
         embed.add_field(name=f"{profit_emoji} 평가손익", value=f"{total_profit:+,}원", inline=True)
         embed.add_field(name="📊 수익률", value=f"{profit_rate:+.2f}%", inline=True)
+
         embed.add_field(name="⏰ 조회시간", value=datetime.now().strftime("%H:%M:%S"), inline=True)
 
-        embed.set_footer(text="주식 자동매매 봇")
+        embed.set_footer(text="주식 자동매매 봇 | 평가손익 = 보유주식 손익")
 
         await interaction.followup.send(embed=embed)
 
@@ -493,6 +504,73 @@ async def alert_setting(interaction: discord.Interaction, 상태: str):
         await interaction.response.send_message("❌ on 또는 off를 입력하세요")
 
 
+@client.tree.command(name="매매내역", description="📜 전체 매매 내역 조회")
+@app_commands.describe(일수="조회할 일수 (기본: 7일)")
+async def trade_history(interaction: discord.Interaction, 일수: int = 7):
+    """매매 내역"""
+    await interaction.response.defer(thinking=True)
+
+    try:
+        # 저널에서 데이터 가져오기
+        journal_data = client.journal.get_recent_trades(days=일수)
+
+        if not journal_data:
+            await interaction.followup.send(f"📭 최근 {일수}일 매매 내역이 없습니다")
+            return
+
+        # 매수/매도 분리
+        buys = [t for t in journal_data if t['type'] == 'buy']
+        sells = [t for t in journal_data if t['type'] == 'sell']
+
+        # 통계 계산
+        total_profit = sum([t.get('profit', 0) for t in sells])
+        wins = len([t for t in sells if t.get('profit', 0) > 0])
+        losses = len([t for t in sells if t.get('profit', 0) < 0])
+        win_rate = (wins / len(sells) * 100) if sells else 0
+
+        embed = discord.Embed(
+            title=f"📜 매매 내역 (최근 {일수}일)",
+            description=f"총 {len(journal_data)}건 | 매수 {len(buys)}건 | 매도 {len(sells)}건",
+            color=0x2ecc71 if total_profit > 0 else 0xe74c3c,
+            timestamp=datetime.now()
+        )
+
+        # 통계 요약
+        embed.add_field(
+            name="📊 거래 통계",
+            value=f"승: {wins}회 | 패: {losses}회\n승률: {win_rate:.1f}%\n누적 손익: {total_profit:+,}원",
+            inline=False
+        )
+
+        # 최근 거래 내역 (최대 10개)
+        recent_trades = []
+        for trade in journal_data[:10]:
+            if trade['type'] == 'buy':
+                emoji = "🔵"
+                info = f"매수 {trade['quantity']}주 @ {trade['price']:,}원"
+            else:
+                profit_rate = trade.get('profit_rate', 0)
+                emoji = "🟢" if profit_rate >= 0 else "🔴"
+                info = f"매도 {trade['quantity']}주 @ {trade['price']:,}원 ({profit_rate:+.2f}%)"
+
+            date = trade.get('timestamp', 'N/A').split()[0] if 'timestamp' in trade else 'N/A'
+            recent_trades.append(f"{emoji} **{trade['stock_name']}** ({trade['stock_code']})\n{info}\n📅 {date}\n")
+
+        if recent_trades:
+            embed.add_field(
+                name="📋 최근 거래 내역",
+                value="\n".join(recent_trades),
+                inline=False
+            )
+
+        embed.set_footer(text="주식 자동매매 봇")
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ 에러 발생: {str(e)}")
+
+
 @client.tree.command(name="도움말", description="❓ 명령어 도움말")
 async def help_command(interaction: discord.Interaction):
     """도움말"""
@@ -504,7 +582,7 @@ async def help_command(interaction: discord.Interaction):
 
     embed.add_field(
         name="📊 조회",
-        value="`/잔고` `/포지션` `/오늘` `/통계`",
+        value="`/잔고` `/포지션` `/오늘` `/통계` `/매매내역 [일수]`",
         inline=False
     )
 
