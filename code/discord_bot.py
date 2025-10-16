@@ -98,7 +98,7 @@ async def balance(interaction: discord.Interaction):
         # 보유 종목 수
         holdings_count = 0
         if 'output1' in balance_data:
-            holdings_count = len([s for s in balance_data['output1'] if int(s.get('hldg_qty', 0)) > 0])
+            holdings_count = len([s for s in balance_data['output1'] if int(float(s.get('hldg_qty', 0))) > 0])
 
         # Embed 생성
         embed = discord.Embed(
@@ -136,7 +136,7 @@ async def positions(interaction: discord.Interaction):
             await interaction.followup.send("❌ 포지션 조회 실패")
             return
 
-        holdings = [s for s in balance_data['output1'] if int(s.get('hldg_qty', 0)) > 0]
+        holdings = [s for s in balance_data['output1'] if int(float(s.get('hldg_qty', 0))) > 0]
 
         if not holdings:
             await interaction.followup.send("📭 보유 종목이 없습니다")
@@ -151,7 +151,7 @@ async def positions(interaction: discord.Interaction):
         for stock in holdings[:10]:  # 최대 10개
             name = stock.get('prdt_name', 'N/A')
             code = stock.get('pdno', 'N/A')
-            qty = int(stock.get('hldg_qty', 0))
+            qty = int(float(stock.get('hldg_qty', 0)))
             avg_price = int(float(stock.get('pchs_avg_pric', 0)))
             current_price = int(float(stock.get('prpr', 0)))
             profit_rate = float(stock.get('evlu_pfls_rt', 0))
