@@ -100,9 +100,19 @@ async def balance(interaction: discord.Interaction):
         # 평가손익 (현재 보유 주식의 평가손익)
         total_profit = int(float(output2.get('evlu_pfls_smtl_amt', 0)))
 
-        # 수익률 계산 (평가손익 / 매입금액)
-        purchase_amt = int(float(output2.get('pchs_amt_smtl_amt', 0)))  # 매입금액
-        profit_rate = (total_profit / purchase_amt * 100) if purchase_amt > 0 else 0
+        # 매입금액 (API에서 직접 가져오기)
+        purchase_amt = int(float(output2.get('pchs_amt_smtl_amt', 0)))
+
+        # 수익률 계산
+        # 매입금액이 0이면 주식평가액 기준으로 계산
+        if purchase_amt > 0:
+            profit_rate = (total_profit / purchase_amt * 100)
+        elif stock_eval > 0:
+            # 매입금액 = 주식평가액 - 평가손익
+            purchase_amt = stock_eval - total_profit
+            profit_rate = (total_profit / purchase_amt * 100) if purchase_amt > 0 else 0
+        else:
+            profit_rate = 0
 
         # 보유 종목 수
         holdings_count = 0
@@ -125,6 +135,9 @@ async def balance(interaction: discord.Interaction):
         profit_emoji = "🟢" if total_profit >= 0 else "🔴"
         embed.add_field(name=f"{profit_emoji} 평가손익", value=f"{total_profit:+,}원", inline=True)
         embed.add_field(name="📊 수익률", value=f"{profit_rate:+.2f}%", inline=True)
+
+        # 디버그 정보 (매입금액 표시)
+        embed.add_field(name="💰 매입금액", value=f"{purchase_amt:,}원", inline=True)
 
         embed.add_field(name="⏰ 조회시간", value=datetime.now().strftime("%H:%M:%S"), inline=True)
 
