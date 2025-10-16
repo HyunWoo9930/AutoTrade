@@ -16,7 +16,7 @@ print(f"{'='*60}\n")
 api = KISApi()
 api.get_access_token()
 
-notifier = DiscordNotifier()
+notifier = DiscordNotifier(market='overseas')
 
 # 해외 잔고 조회
 balance = api.get_overseas_balance()
@@ -68,18 +68,18 @@ if holdings_list:
         emoji = "🟢" if item['profit_rate'] >= 0 else "🔴"
         print(f"  {emoji} {item['name']}: {item['qty']}주 (${item['current_price']:.2f}, {item['profit_rate']:+.2f}%)")
 
-# Discord 알림 - 해외주식 보유 현황
+# Discord 알림 - 해외주식 보유 현황 (USD 그대로 사용)
 notifier.notify_evening(
-    cash=int(cash_usd * 1300),  # 원화 환산 (대략)
+    cash=int(cash_usd),
     holdings_list=[{
-        'name': f"🇺🇸 {h['name']}",
+        'name': h['name'],
         'code': h['ticker'],
         'qty': h['qty'],
-        'avg_price': int(h['current_price'] * 1300),
-        'current_price': int(h['current_price'] * 1300),
+        'avg_price': int(h['current_price']),
+        'current_price': int(h['current_price']),
         'profit_rate': h['profit_rate']
     } for h in holdings_list],
-    total=int(total_asset_usd * 1300)
+    total=int(total_asset_usd)
 )
 
 # 해외주식 일일 리포트
@@ -92,9 +92,9 @@ notifier.notify_daily_report({
     'profit': 0,
     'avg_win': 0,
     'avg_loss': 0,
-    'cash': int(cash_usd * 1300),
-    'stocks': int(total_stock_value_usd * 1300),
-    'total': int(total_asset_usd * 1300)
+    'cash': int(cash_usd),
+    'stocks': int(total_stock_value_usd),
+    'total': int(total_asset_usd)
 })
 
 print("\n✅ 해외주식 저녁 루틴 완료!")

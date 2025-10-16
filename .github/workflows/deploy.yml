@@ -159,7 +159,7 @@ jobs:
       - name: Send Discord notification
         if: env.DISCORD_WEBHOOK_URL != ''
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_SYSTEM }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_SYSTEM_DEPLOY }}
         run: |
           if [ "${{ needs.deploy.result }}" == "success" ]; then
             STATUS="✅ Success"

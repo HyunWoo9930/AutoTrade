@@ -13,7 +13,7 @@ print(f"{'='*60}\n")
 api = KISApi()
 api.get_access_token()
 
-notifier = DiscordNotifier()
+notifier = DiscordNotifier(market='domestic')
 
 # 감시 종목 목록
 watchlist = get_all_stocks()

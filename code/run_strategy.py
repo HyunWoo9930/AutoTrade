@@ -14,7 +14,7 @@ def main():
     print(f"{'=' * 60}\n")
 
     # 디스코드 알림
-    notifier = DiscordNotifier()
+    notifier = DiscordNotifier(market='domestic')
     notifier.notify_start("run_strategy.py")
 
     strategy = AdvancedTradingStrategy()

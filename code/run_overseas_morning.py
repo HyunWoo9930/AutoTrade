@@ -16,7 +16,7 @@ print(f"{'='*60}\n")
 api = KISApi()
 api.get_access_token()
 
-notifier = DiscordNotifier()
+notifier = DiscordNotifier(market='overseas')
 
 # 해외 잔고 조회
 balance = api.get_overseas_balance()

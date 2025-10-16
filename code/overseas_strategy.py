@@ -15,7 +15,7 @@ class OverseasTradingStrategy:
     def __init__(self):
         self.api = KISApi()
         self.api.get_access_token()
-        self.notifier = DiscordNotifier()
+        self.notifier = DiscordNotifier(market='overseas')
         self.current_buy_id = {}
         self.pyramid_tracker = {}
         self.max_holdings = 15  # 공격적 설정 (해외주식)
