@@ -436,9 +436,26 @@ class KISApi:
                 import pandas as pd
                 data = result['output2'][:count]
 
-                # 데이터 파싱
+                if not data or len(data) == 0:
+                    print(f"❌ 해외주식 데이터 없음: {ticker}")
+                    return None
+
+                # 데이터 파싱 (필드명 확인)
                 df = pd.DataFrame(data)
-                df['date'] = pd.to_datetime(df['xymd'])
+
+                # 날짜 필드 (xymd, stck_bsop_date, rsym_bsop_date 등 다양한 필드명 시도)
+                date_field = None
+                for field in ['xymd', 'stck_bsop_date', 'rsym_bsop_date', 'date']:
+                    if field in df.columns:
+                        date_field = field
+                        break
+
+                if date_field is None:
+                    print(f"⚠️ 날짜 필드를 찾을 수 없습니다. 사용 가능한 필드: {df.columns.tolist()}")
+                    # 첫 번째 필드를 날짜로 가정
+                    date_field = df.columns[0]
+
+                df['date'] = pd.to_datetime(df[date_field])
                 df['open'] = df['open'].astype(float)
                 df['high'] = df['high'].astype(float)
                 df['low'] = df['low'].astype(float)
