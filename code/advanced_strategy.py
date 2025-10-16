@@ -19,7 +19,7 @@ class AdvancedTradingStrategy:
         self.journal = TradingJournal()
         self.current_buy_id = {}
         self.pyramid_tracker = {}
-        self.max_holdings = 10  # ✅ 최대 보유 종목 수 (15→10 공격적 조정)
+        self.max_holdings = 15  # ✅ 최대 보유 종목 수 (분산 투자 최적화)
         self.sold_today = self._load_sold_today()  # ✅ 영구 저장에서 불러오기
         self.peak_profit = {}
         self.sector_rotation = None  # 🆕 섹터 로테이션 (필요 시 초기화)
@@ -559,8 +559,8 @@ class AdvancedTradingStrategy:
             if holding_qty > 0:
                 print(f"  수익률: {profit_rate}%")
 
-                # 🔔 보유 현황 알림 (±5% 이상일 때만)
-                if abs(profit_rate) >= 5:
+                # 🔔 보유 현황 알림 (±10% 이상일 때만)
+                if abs(profit_rate) >= 10:
                     self.notifier.notify_holding(
                         stock_name, stock_code, holding_qty, profit_rate
                     )
