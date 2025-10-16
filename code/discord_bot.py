@@ -42,8 +42,9 @@ class TradingBot(discord.Client):
 
     async def setup_hook(self):
         """봇 초기화"""
-        await self.tree.sync()
-        print("✅ Discord Bot 명령어 동기화 완료")
+        # 글로벌 명령어 동기화 (모든 서버에 적용)
+        synced = await self.tree.sync()
+        print(f"✅ Discord Bot 명령어 동기화 완료 ({len(synced)}개 명령어)")
 
     async def on_ready(self):
         """봇 준비 완료"""
