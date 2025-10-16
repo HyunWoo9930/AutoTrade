@@ -116,6 +116,15 @@ class TradingJournal:
                 return
         print(f"❌ 거래 기록을 찾을 수 없습니다 (ID: {trade_id})")
 
+    def find_open_buy(self, stock_code):
+        """종목 코드로 미청산 매수 기록 찾기 (가장 최근 것)"""
+        for trade in reversed(self.trades):  # 역순으로 탐색 (최신 것 먼저)
+            if (trade.get('type') == 'BUY' and
+                trade.get('stock_code') == stock_code and
+                trade.get('result') == 'OPEN'):
+                return trade.get('id')
+        return None
+
     def get_statistics(self):
         """통계 분석 - 딕셔너리 반환"""
         if not self.trades:

@@ -770,6 +770,10 @@ class AdvancedTradingStrategy:
 
                 # 📝 일지 기록
                 buy_id = self.current_buy_id.get(stock_code)
+                if not buy_id:
+                    # ✅ Fallback: journal에서 미청산 매수 기록 찾기
+                    buy_id = self.journal.find_open_buy(stock_code)
+
                 if buy_id:
                     self.journal.log_sell(
                         buy_id=buy_id,
@@ -783,7 +787,10 @@ class AdvancedTradingStrategy:
 
                     # 전량 청산 시에만 buy_id 삭제
                     if sell_qty >= quantity:
-                        del self.current_buy_id[stock_code]
+                        if stock_code in self.current_buy_id:
+                            del self.current_buy_id[stock_code]
+                else:
+                    print(f"⚠️ 매수 기록을 찾을 수 없어 매도 기록 실패: {stock_code}")
 
                 # 피라미드 추적 삭제
                 if stock_code in self.pyramid_tracker:
@@ -821,6 +828,10 @@ class AdvancedTradingStrategy:
                         print("✅ 추세 반전 익절 완료")
 
                         buy_id = self.current_buy_id.get(stock_code)
+                        if not buy_id:
+                            # ✅ Fallback: journal에서 미청산 매수 기록 찾기
+                            buy_id = self.journal.find_open_buy(stock_code)
+
                         if buy_id:
                             self.journal.log_sell(
                                 buy_id=buy_id,
@@ -831,7 +842,10 @@ class AdvancedTradingStrategy:
                                 profit_rate=profit_rate,
                                 sell_reason="⚠️ 추세 반전 (데드크로스)"
                             )
-                            del self.current_buy_id[stock_code]
+                            if stock_code in self.current_buy_id:
+                                del self.current_buy_id[stock_code]
+                        else:
+                            print(f"⚠️ 매수 기록을 찾을 수 없어 매도 기록 실패: {stock_code}")
 
                         if stock_code in self.pyramid_tracker:
                             del self.pyramid_tracker[stock_code]
@@ -863,6 +877,10 @@ class AdvancedTradingStrategy:
                     print("✅ 트레일링 스탑 매도 완료")
 
                     buy_id = self.current_buy_id.get(stock_code)
+                    if not buy_id:
+                        # ✅ Fallback: journal에서 미청산 매수 기록 찾기
+                        buy_id = self.journal.find_open_buy(stock_code)
+
                     if buy_id:
                         self.journal.log_sell(
                             buy_id=buy_id,
@@ -873,7 +891,10 @@ class AdvancedTradingStrategy:
                             profit_rate=profit_rate,
                             sell_reason=f"📉 트레일링 스탑 (최고점 {peak:.2f}% → 현재 {profit_rate:.2f}%)"
                         )
-                        del self.current_buy_id[stock_code]
+                        if stock_code in self.current_buy_id:
+                            del self.current_buy_id[stock_code]
+                    else:
+                        print(f"⚠️ 매수 기록을 찾을 수 없어 매도 기록 실패: {stock_code}")
 
                     if stock_code in self.pyramid_tracker:
                         del self.pyramid_tracker[stock_code]
@@ -954,6 +975,10 @@ class AdvancedTradingStrategy:
 
                 # 📝 일지 기록
                 buy_id = self.current_buy_id.get(stock_code)
+                if not buy_id:
+                    # ✅ Fallback: journal에서 미청산 매수 기록 찾기
+                    buy_id = self.journal.find_open_buy(stock_code)
+
                 if buy_id:
                     sell_reason = f"손절 ({stop_loss_threshold}% 도달)"
                     if regime == "crash":
@@ -968,7 +993,10 @@ class AdvancedTradingStrategy:
                         profit_rate=profit_rate,
                         sell_reason=sell_reason
                     )
-                    del self.current_buy_id[stock_code]
+                    if stock_code in self.current_buy_id:
+                        del self.current_buy_id[stock_code]
+                else:
+                    print(f"⚠️ 매수 기록을 찾을 수 없어 매도 기록 실패: {stock_code}")
 
                 # 피라미드 추적 삭제
                 if stock_code in self.pyramid_tracker:
@@ -1003,6 +1031,10 @@ class AdvancedTradingStrategy:
                 print("✅ 부분 익절 완료")
 
                 buy_id = self.current_buy_id.get(stock_code)
+                if not buy_id:
+                    # ✅ Fallback: journal에서 미청산 매수 기록 찾기
+                    buy_id = self.journal.find_open_buy(stock_code)
+
                 if buy_id:
                     self.journal.log_sell(
                         buy_id=buy_id,
@@ -1013,6 +1045,8 @@ class AdvancedTradingStrategy:
                         profit_rate=profit_rate,
                         sell_reason=f"1차 익절 (+{target_1:.0f}% 달성)"
                     )
+                else:
+                    print(f"⚠️ 매수 기록을 찾을 수 없어 매도 기록 실패: {stock_code}")
 
                 self.notifier.notify_sell(stock_name, stock_code, sell_qty, current_price, profit_rate)
             else:
@@ -1026,6 +1060,10 @@ class AdvancedTradingStrategy:
                 print("✅ 익절 매도 완료")
 
                 buy_id = self.current_buy_id.get(stock_code)
+                if not buy_id:
+                    # ✅ Fallback: journal에서 미청산 매수 기록 찾기
+                    buy_id = self.journal.find_open_buy(stock_code)
+
                 if buy_id:
                     self.journal.log_sell(
                         buy_id=buy_id,
@@ -1036,7 +1074,10 @@ class AdvancedTradingStrategy:
                         profit_rate=profit_rate,
                         sell_reason=f"2차 익절 (+{target_2:.0f}% 달성)"
                     )
-                    del self.current_buy_id[stock_code]
+                    if stock_code in self.current_buy_id:
+                        del self.current_buy_id[stock_code]
+                else:
+                    print(f"⚠️ 매수 기록을 찾을 수 없어 매도 기록 실패: {stock_code}")
 
                 if stock_code in self.pyramid_tracker:
                     del self.pyramid_tracker[stock_code]
